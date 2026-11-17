@@ -21,8 +21,8 @@ dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-PLAYER_URL = os.getenv("PLAYER_URL", "").rstrip("/")
-TARGET_CHANNEL_ID = os.getenv("TARGET_CHANNEL_ID", "").strip()
+PLAYER_URL = (os.getenv("PLAYER_URL") or "https://teravidsplayer.vercel.app").rstrip("/")
+TARGET_CHANNEL_ID = (os.getenv("TARGET_CHANNEL_ID") or "@teravidsplayer").strip()
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
