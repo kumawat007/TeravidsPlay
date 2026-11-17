@@ -123,6 +123,7 @@ export default {
             `https://teraboxapp.com/s/${formattedToken}`
           ];
 
+      const debugLogs = [];
       for (const candidate of candidates) {
         try {
           const resolveResp = await fetch("https://iteraplay.in/api/videos/import", {
@@ -136,18 +137,25 @@ export default {
             body: JSON.stringify({ url: candidate })
           });
 
+          const respText = await resolveResp.text();
+          debugLogs.push({ candidate, status: resolveResp.status, body: respText.slice(0, 200) });
+
           if (resolveResp.ok) {
-            const data = await resolveResp.json();
-            if (data && data.success && data.videos && data.videos.length > 0) {
-              return new Response(JSON.stringify(data), {
-                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-              });
-            }
+            try {
+              const data = JSON.parse(respText);
+              if (data && data.success && data.videos && data.videos.length > 0) {
+                return new Response(JSON.stringify(data), {
+                  headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+                });
+              }
+            } catch (e) {}
           }
-        } catch (err) {}
+        } catch (err) {
+          debugLogs.push({ candidate, error: err.message });
+        }
       }
 
-      return new Response(JSON.stringify({ success: false, message: "Stream extraction failed across all candidate endpoints" }), {
+      return new Response(JSON.stringify({ success: false, message: "Stream extraction failed", debug: debugLogs }), {
         status: 404,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
