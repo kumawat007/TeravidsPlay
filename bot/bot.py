@@ -335,6 +335,44 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path in ["/diag", "/resolve", "/test"]:
+            import json, traceback
+            query = urllib.parse.parse_qs(parsed.query)
+            target = query.get("url", ["https://1024terabox.com/s/18XBuJRPYrMNmrqzYZNqLbA"])[0]
+            diag = {
+                "target_url": target,
+                "worker_url": extractor.worker_url,
+                "step1_worker_direct": None,
+                "step2_extractor": None,
+            }
+
+            # 1. Direct Edge Worker Test
+            try:
+                surl_clean = extractor.parse_surl(target) or target
+                w_endpoint = f"{extractor.worker_url}/api/resolve?surl={urllib.parse.quote(surl_clean)}"
+                r = requests.get(w_endpoint, timeout=12)
+                diag["step1_worker_direct"] = {
+                    "endpoint": w_endpoint,
+                    "status_code": r.status_code,
+                    "body": r.text[:350]
+                }
+            except Exception as e:
+                diag["step1_worker_direct"] = {"error": str(e), "trace": traceback.format_exc()}
+
+            # 2. Full Extractor Test
+            try:
+                diag["step2_extractor"] = extractor.get_video_stream(target)
+            except Exception as e:
+                diag["step2_extractor"] = {"error": str(e), "trace": traceback.format_exc()}
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(diag, indent=2).encode("utf-8"))
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()

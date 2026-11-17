@@ -9,9 +9,12 @@ Features:
 
 import os
 import re
+import logging
 import urllib.parse
 from typing import Dict, Any, Optional
 import requests
+
+logger = logging.getLogger("TeravidsPlayBot")
 
 TERABOX_DOMAINS = [
     "terabox.com",
@@ -102,7 +105,10 @@ class TeraBoxExtractor:
             return None
         try:
             endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(surl_or_url)}"
-            resp = self.session.get(endpoint, timeout=20)
+            logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker: {endpoint}")
+            # Use standalone requests to avoid cross-domain cookie issues
+            resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=15)
+            logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("success") and data.get("videos"):
@@ -120,6 +126,7 @@ class TeraBoxExtractor:
                     quality = video.get("quality", "HD")
 
                     if stream_url:
+                        logger.info(f"[TeraBoxExtractor] Resolved successfully: '{title}' ({format_bytes(size)})")
                         return {
                             "success": True,
                             "title": title,
@@ -132,8 +139,12 @@ class TeraBoxExtractor:
                             "quality": quality,
                             "source": "Cloudflare Edge Engine",
                         }
+                else:
+                    logger.warning(f"[TeraBoxExtractor] Worker payload indicated failure: {resp.text[:200]}")
+            else:
+                logger.warning(f"[TeraBoxExtractor] Worker returned HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
-            print(f"[TeraBoxExtractor] Worker Engine notice: {e}")
+            logger.error(f"[TeraBoxExtractor] Worker Engine exception: {e}")
         return None
 
     def parse_surl(self, share_url: str) -> Optional[str]:
@@ -280,18 +291,23 @@ class TeraBoxExtractor:
         """
         Main orchestrator: Resolves any TeraBox share URL into a streamable direct link.
         """
-        # Step 1: Normalize & resolve shortened URLs if needed
+        logger.info(f"[TeraBoxExtractor] Starting extraction for URL: {share_url}")
+
+        # Step 1: Normalize & resolve shortened URLs (e.g. bit.ly, t.co) ONLY if not already a TeraBox link
         clean_url = share_url
-        try:
-            head_resp = requests.head(share_url, headers=DEFAULT_HEADERS, allow_redirects=True, timeout=5)
-            clean_url = head_resp.url
-        except Exception:
-            pass
+        if not is_terabox_url(share_url):
+            try:
+                head_resp = requests.head(share_url, headers=DEFAULT_HEADERS, allow_redirects=True, timeout=4)
+                clean_url = head_resp.url
+            except Exception as e:
+                logger.warning(f"[TeraBoxExtractor] Redirection check notice: {e}")
 
         surl = self.parse_surl(clean_url) or self.parse_surl(share_url)
+        logger.info(f"[TeraBoxExtractor] Extracted surl token: {surl}")
 
         # Build candidate URL list for maximum compatibility across all 12 TeraBox domains
         candidates = []
+        formatted_surl = ""
         if surl:
             formatted_surl = surl if surl.startswith("1") else "1" + surl
             clean_token = surl.lstrip("1")
@@ -330,6 +346,7 @@ class TeraBoxExtractor:
                 fallback_res["surl"] = surl
                 return fallback_res
 
+        logger.error(f"[TeraBoxExtractor] All resolution engines failed for URL: {share_url}")
         return {
             "success": False,
             "error": "Resolution Failed",
