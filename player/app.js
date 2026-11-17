@@ -510,11 +510,20 @@ document.addEventListener('DOMContentLoaded', () => {
     return plyrInstance;
   }
 
+  const rawPoster = urlParams.get('poster') || urlParams.get('thumb') || '';
+  if (rawPoster) {
+    videoElement.poster = safeDecode(rawPoster);
+  }
+
   // 15. Stream Loader
-  function loadStream(url) {
+  function loadStream(url, poster = '') {
     if (!url) {
       showError('Missing Stream URL', 'No valid stream URL was provided.');
       return;
+    }
+
+    if (poster) {
+      videoElement.poster = poster;
     }
 
     loader.classList.remove('hidden');
@@ -620,7 +629,10 @@ document.addEventListener('DOMContentLoaded', () => {
         videoTitleElem.textContent = title;
         document.title = `${title} — TeravidsPlay`;
         if (sizeFormatted) fileSizeElem.textContent = sizeFormatted;
-        loadStream(vid.stream_url);
+        if (vid.thumbnailUrl) {
+          videoElement.poster = vid.thumbnailUrl;
+        }
+        loadStream(vid.stream_url, vid.thumbnailUrl || '');
         return;
       }
       showError('Video Unavailable', 'Could not resolve stream for this link. It may have expired or is private.');
