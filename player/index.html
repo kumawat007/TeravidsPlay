@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>TeravidsPlay — 2026 Pro Video Player</title>
+
+  <!-- SEO & OpenGraph -->
+  <meta name="description" content="Ultra-modern light web video player for Telegram." />
+  <meta property="og:title" content="TeravidsPlay Player" />
+  <meta property="og:description" content="High-definition video playback with audio boost and 4x speed control." />
+  
+  <!-- Inline SVG Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Plyr Video Player Suite -->
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+  <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+
+  <!-- HLS.js for Adaptive Streams -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+  <!-- Google Font: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="player-app" id="playerApp">
+    <!-- Header Bar -->
+    <header class="app-header" id="appHeader">
+      <div class="header-left">
+        <span class="live-dot" title="Ready to stream"></span>
+        <h1 id="videoTitle" class="video-title">Loading Stream...</h1>
+      </div>
+      <div class="header-right">
+        <!-- Developer Watermark -->
+        <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer" class="dev-badge" title="Developed by KUMAWAT⁰⁰⁷ PRINTs">
+          <span class="dev-label">DEV</span>
+          <span class="dev-name">KUMAWAT⁰⁰⁷ PRINTs</span>
+        </a>
+        <button id="screenLockBtn" class="icon-btn" aria-label="Lock Screen" title="Lock Touch Screen">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </button>
+        <button id="fullscreenBtn" class="icon-btn" aria-label="Toggle Fullscreen" title="Fullscreen">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Viewport / Video Area -->
+    <main class="player-container" id="playerContainer">
+      <!-- Loading Overlay -->
+      <div id="loader" class="loader-overlay">
+        <div class="spinner"></div>
+        <p id="loaderText">Connecting stream...</p>
+      </div>
+
+      <!-- Tap to Unmute Overlay Banner -->
+      <div id="unmuteOverlay" class="unmute-overlay" style="display: none;">
+        <button id="unmuteBtn" class="unmute-banner-btn">
+          <span class="unmute-icon">🔊</span>
+          <span>Tap to Unmute Audio</span>
+        </button>
+      </div>
+
+      <!-- Floating Screen Unlock Button (Visible only when Touch Screen is Locked) -->
+      <button id="screenUnlockBtn" class="unlock-floating-btn" style="display: none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+        </svg>
+        <span>Screen Locked (Tap to Unlock)</span>
+      </button>
+
+      <!-- Long-Press Speed Overlay Indicator (Telegram 2x/4x style) -->
+      <div id="speedOverlay" class="speed-overlay" style="display: none;">
+        <div class="speed-indicator-badge">
+          <span id="speedOverlayIcon">⚡</span>
+          <span id="speedOverlayText">2X Speed</span>
+        </div>
+      </div>
+
+      <!-- Gesture HUDs for Vertical Swiping: Brightness & Volume -->
+      <div id="brightnessHud" class="gesture-hud brightness-hud" style="display: none;">
+        <span class="hud-icon">☀️</span>
+        <div class="hud-bar-track">
+          <div id="brightnessBar" class="hud-bar-fill" style="height: 100%;"></div>
+        </div>
+        <span id="brightnessText" class="hud-text">100%</span>
+      </div>
+
+      <div id="volumeHud" class="gesture-hud volume-hud" style="display: none;">
+        <span id="volumeHudIcon" class="hud-icon">🔊</span>
+        <div class="hud-bar-track">
+          <div id="volumeBar" class="hud-bar-fill" style="height: 100%;"></div>
+        </div>
+        <span id="volumeText" class="hud-text">100%</span>
+      </div>
+
+      <!-- Double Tap Seek Feedback Ripples -->
+      <div id="rippleLeft" class="seek-ripple seek-ripple-left" style="display: none;">
+        <div class="ripple-content">
+          <span class="ripple-arrow">««</span>
+          <span>10s</span>
+        </div>
+      </div>
+      <div id="rippleRight" class="seek-ripple seek-ripple-right" style="display: none;">
+        <div class="ripple-content">
+          <span>10s</span>
+          <span class="ripple-arrow">»»</span>
+        </div>
+      </div>
+
+      <!-- Resume Notification Toast -->
+      <div id="resumeToast" class="resume-toast" style="display: none;">
+        <span id="resumeToastText">Resumed from 00:00</span>
+      </div>
+
+      <!-- Error State Card -->
+      <div id="errorOverlay" class="error-overlay" style="display: none;">
+        <div class="error-card">
+          <div class="error-icon">⚠️</div>
+          <h3 id="errorHeading">Stream Unavailable</h3>
+          <p id="errorMsg">The video link may have expired or is blocked.</p>
+          <div class="error-actions">
+            <button id="retryBtn" class="btn btn-primary">Try Again</button>
+            <a id="externalDownloadBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Open Directly</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- HTML5 Video Container with CrossOrigin for Web Audio API support -->
+      <video id="player" playsinline crossorigin="anonymous" controls preload="metadata"></video>
+    </main>
+
+    <!-- Footer Meta & Advanced Mobile Controls -->
+    <footer class="app-footer" id="appFooter">
+      <div class="footer-left">
+        <span class="badge" id="formatBadge">HD STREAM</span>
+        <span class="meta-item" id="fileSize">Processing</span>
+      </div>
+
+      <div class="footer-center">
+        <!-- Quick Audio Boost Button -->
+        <button id="audioBoostBtn" class="tool-btn" title="Boost audio volume up to 300%">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+          <span id="audioBoostLabel">Boost: 100%</span>
+        </button>
+
+        <!-- Aspect Ratio Button (Fit / Fill / Stretch) -->
+        <button id="aspectRatioBtn" class="tool-btn" title="Aspect Ratio">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+            <path d="M7 15l5-5 5 5"></path>
+          </svg>
+          <span id="aspectRatioLabel">Fit</span>
+        </button>
+
+        <!-- Mobile Settings Drawer Trigger -->
+        <button id="settingsSheetBtn" class="tool-btn" title="Player Settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span id="speedDisplayLabel">1.0x</span>
+        </button>
+      </div>
+
+      <div class="footer-right">
+        <button id="pipBtn" class="icon-btn" aria-label="Picture in Picture" title="Picture in Picture">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <rect x="11" y="9" width="9" height="6" rx="1" ry="1"></rect>
+          </svg>
+        </button>
+        <button id="copyLinkBtn" class="icon-btn" aria-label="Share Stream" title="Share Stream">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+        </button>
+      </div>
+    </footer>
+
+    <!-- Mobile Settings Modal Bottom Sheet -->
+    <div id="settingsBackdrop" class="sheet-backdrop" style="display: none;"></div>
+    <div id="settingsSheet" class="settings-sheet" style="display: none;">
+      <div class="sheet-handle-bar">
+        <div class="sheet-handle"></div>
+      </div>
+      <div class="sheet-header">
+        <h3>Player Preferences</h3>
+        <button id="closeSheetBtn" class="close-sheet-btn">✕</button>
+      </div>
+      
+      <!-- Section: Playback Speed -->
+      <div class="sheet-section">
+        <label class="sheet-label">Playback Speed</label>
+        <div class="pill-group" id="speedPills">
+          <button class="pill-btn" data-speed="0.5">0.5x</button>
+          <button class="pill-btn" data-speed="0.75">0.75x</button>
+          <button class="pill-btn active" data-speed="1.0">1.0x</button>
+          <button class="pill-btn" data-speed="1.25">1.25x</button>
+          <button class="pill-btn" data-speed="1.5">1.5x</button>
+          <button class="pill-btn" data-speed="1.75">1.75x</button>
+          <button class="pill-btn" data-speed="2.0">2.0x</button>
+          <button class="pill-btn" data-speed="4.0">4.0x</button>
+        </div>
+      </div>
+
+      <!-- Section: Audio Boost -->
+      <div class="sheet-section">
+        <label class="sheet-label">Volume & Audio Boost (Web Audio)</label>
+        <div class="pill-group" id="boostPills">
+          <button class="pill-btn active" data-boost="1.0">100% (Normal)</button>
+          <button class="pill-btn" data-boost="1.5">150%</button>
+          <button class="pill-btn" data-boost="2.0">200%</button>
+          <button class="pill-btn" data-boost="3.0">300% (Ultra)</button>
+        </div>
+      </div>
+
+      <!-- Section: Video Scale / Aspect -->
+      <div class="sheet-section">
+        <label class="sheet-label">Screen Fit</label>
+        <div class="pill-group" id="aspectPills">
+          <button class="pill-btn active" data-aspect="contain">Fit (Original)</button>
+          <button class="pill-btn" data-aspect="cover">Fill (Zoom)</button>
+          <button class="pill-btn" data-aspect="fill">Stretch</button>
+        </div>
+      </div>
+
+      <!-- Section: Sleep Timer -->
+      <div class="sheet-section">
+        <label class="sheet-label">Sleep Timer</label>
+        <div class="pill-group" id="sleepPills">
+          <button class="pill-btn active" data-sleep="0">Off</button>
+          <button class="pill-btn" data-sleep="15">15 min</button>
+          <button class="pill-btn" data-sleep="30">30 min</button>
+          <button class="pill-btn" data-sleep="45">45 min</button>
+          <button class="pill-btn" data-sleep="60">60 min</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
