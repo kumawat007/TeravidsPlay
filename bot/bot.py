@@ -14,6 +14,7 @@ import html
 import logging
 import threading
 import urllib.parse
+import requests
 from dotenv import load_dotenv
 import telebot
 from telebot import types

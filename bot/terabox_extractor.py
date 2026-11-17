@@ -92,6 +92,7 @@ class TeraBoxExtractor:
         self.worker_url = (worker_url or os.getenv("WORKER_URL", "https://teravidsplay.proxyking.workers.dev")).rstrip("/")
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
+        self.last_diagnostics = []
         if self.ndus_cookie:
             self.session.cookies.set("ndus", self.ndus_cookie, domain=".terabox.com")
             self.session.cookies.set("lang", "en", domain=".terabox.com")
@@ -102,12 +103,14 @@ class TeraBoxExtractor:
         Queries the Cloudflare Edge Worker API to bypass datacenter IP rate-limits and captchas.
         """
         if not self.worker_url:
+            self.last_diagnostics.append("Worker Engine skipped: worker_url is empty")
             return None
         try:
             endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(surl_or_url)}"
             logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker: {endpoint}")
             # Use standalone requests to avoid cross-domain cookie issues
             resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=15)
+            self.last_diagnostics.append(f"Worker {endpoint} -> status {resp.status_code}")
             logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
@@ -139,12 +142,18 @@ class TeraBoxExtractor:
                             "quality": quality,
                             "source": "Cloudflare Edge Engine",
                         }
+                    else:
+                        self.last_diagnostics.append("Worker video object missing stream_url")
                 else:
+                    self.last_diagnostics.append(f"Worker payload error: {resp.text[:200]}")
                     logger.warning(f"[TeraBoxExtractor] Worker payload indicated failure: {resp.text[:200]}")
             else:
+                self.last_diagnostics.append(f"Worker non-200: {resp.status_code} - {resp.text[:200]}")
                 logger.warning(f"[TeraBoxExtractor] Worker returned HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
-            logger.error(f"[TeraBoxExtractor] Worker Engine exception: {e}")
+            err_msg = f"Worker exception: {type(e).__name__}: {e}"
+            self.last_diagnostics.append(err_msg)
+            logger.error(f"[TeraBoxExtractor] {err_msg}")
         return None
 
     def parse_surl(self, share_url: str) -> Optional[str]:
@@ -291,6 +300,7 @@ class TeraBoxExtractor:
         """
         Main orchestrator: Resolves any TeraBox share URL into a streamable direct link.
         """
+        self.last_diagnostics = []
         logger.info(f"[TeraBoxExtractor] Starting extraction for URL: {share_url}")
 
         # Step 1: Normalize & resolve shortened URLs (e.g. bit.ly, t.co) ONLY if not already a TeraBox link
@@ -346,9 +356,10 @@ class TeraBoxExtractor:
                 fallback_res["surl"] = surl
                 return fallback_res
 
-        logger.error(f"[TeraBoxExtractor] All resolution engines failed for URL: {share_url}")
+        logger.error(f"[TeraBoxExtractor] All resolution engines failed for URL: {share_url}. Diag: {self.last_diagnostics}")
         return {
             "success": False,
             "error": "Resolution Failed",
             "message": "Unable to extract streamable link. Please verify that the link is valid and public.",
+            "diagnostics": self.last_diagnostics,
         }
