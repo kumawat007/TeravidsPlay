@@ -84,12 +84,13 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
     )
     markup.add(watch_btn)
 
-    # Direct Download link
-    download_btn = types.InlineKeyboardButton(
-        text="📥 Direct Download",
-        url=stream_url,
-    )
-    markup.add(download_btn)
+    # Direct Download link (only added if direct stream URL is available)
+    if stream_url:
+        download_btn = types.InlineKeyboardButton(
+            text="📥 Direct Download",
+            url=stream_url,
+        )
+        markup.add(download_btn)
 
     return markup, player_link
 
