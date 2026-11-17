@@ -179,21 +179,24 @@ export default {
           return new Response("OK", { status: 200 });
         }
 
-        // Send temporary waiting message in channel or chat
+        // Only send waiting message in private chat to avoid flicker/double notifications in public channels
         let waitingMsgId = null;
-        try {
-          const waitResp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: "⚡ <b>Analyzing TeraBox video...</b>\n<i>Generating high-speed stream & web player...</i>",
-              parse_mode: "HTML"
-            }),
-          });
-          const waitData = await waitResp.json();
-          if (waitData.ok) waitingMsgId = waitData.result.message_id;
-        } catch (e) {}
+        const isChannel = msg.chat?.type === "channel";
+        if (!isChannel) {
+          try {
+            const waitResp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: "⚡ <b>Resolving video stream...</b>\n<i>Please wait 1-2 seconds.</i>",
+                parse_mode: "HTML"
+              }),
+            });
+            const waitData = await waitResp.json();
+            if (waitData.ok) waitingMsgId = waitData.result.message_id;
+          } catch (e) {}
+        }
 
         // Resolve stream via High-Speed Edge Engine with candidate fallbacks
         let videoData = null;
@@ -230,48 +233,70 @@ export default {
           } catch (e) {}
         }
 
+        const surl = rawToken || "";
         if (!videoData || !videoData.stream_url) {
-          // Resolution failed
-          if (waitingMsgId) {
-            await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: chatId,
-                message_id: waitingMsgId,
-                text: "❌ <b>Stream Extraction Failed:</b>\nThe link may have expired or is private.",
-                parse_mode: "HTML"
-              })
-            });
+          if (surl) {
+            // Client-Side Web Player Fallback: Browser resolves stream directly via mobile/residential network
+            videoData = {
+              title: "TeraBox Video Stream",
+              size: 0,
+              quality: "HD 1080p",
+              stream_url: "",
+              thumbnailUrl: null,
+            };
+          } else {
+            // Resolution failed and no surl token
+            if (waitingMsgId) {
+              await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: chatId,
+                  message_id: waitingMsgId,
+                  text: "❌ <b>Stream Extraction Failed:</b>\nThe link may have expired or is private.",
+                  parse_mode: "HTML"
+                })
+              });
+            }
+            return new Response("OK", { status: 200 });
           }
-          return new Response("OK", { status: 200 });
         }
 
-        const title = videoData.title || "TeraBox Video";
-        const sizeFormatted = formatBytes(videoData.size);
-        const quality = videoData.quality || "HD";
-        const streamUrl = videoData.stream_url;
+        const title = videoData.title || "TeraBox Video Stream";
+        const sizeFormatted = videoData.size ? formatBytes(videoData.size) : "";
+        const quality = videoData.quality || "HD 1080p";
+        const streamUrl = videoData.stream_url || "";
         const thumbUrl = videoData.thumbnailUrl;
 
         // Build 100% OWN BRAND Short Web Player URL
-        const surlMatch = extracted.match(/\/s\/([a-zA-Z0-9_-]+)/);
-        const surl = surlMatch ? surlMatch[1] : "";
         const shortPlayerUrl = surl 
           ? `${playerBase}/?v=${surl}` 
           : `${playerBase}/?stream=${encodeURIComponent(streamUrl)}&title=${encodeURIComponent(title)}&size=${encodeURIComponent(sizeFormatted)}`;
 
-        const caption = `🎬 <b>${title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</b>\n\n` +
-          `📦 <b>Size:</b> ${sizeFormatted} | <b>Quality:</b> ${quality}\n` +
-          `⚡ <b>Playback:</b> Instant Stream (Zero Ads)\n` +
-          `🔗 <b>Watch Link:</b> ${shortPlayerUrl}\n\n` +
-          `👇 <i>Tap below to watch online inside Telegram:</i>`;
+        const cleanTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 120);
+        const lines = [
+          `🎬 <b>${cleanTitle}</b>\n`,
+          "━━━━━━━━━━━━━━━━━━━━━━"
+        ];
+        if (sizeFormatted && sizeFormatted !== "HD Stream" && sizeFormatted !== "0 B" && sizeFormatted !== "Unknown Size") {
+          lines.push(`📦 <b>File Size:</b> ${sizeFormatted}`);
+        }
+        lines.push(`✨ <b>Quality:</b> ${quality}`);
+        lines.push("⚡ <b>Playback:</b> Instant Stream (Zero Ads)");
+        lines.push("🔊 <b>Audio Boost:</b> 300% Amplification");
+        lines.push("📱 <b>Touch Controls:</b> 2X/4X Turbo • 10s Seek");
+        lines.push("━━━━━━━━━━━━━━━━━━━━━━\n");
+        lines.push("👇 <b>Tap below to stream instantly:</b>");
+        const caption = lines.join("\n");
 
         const replyMarkup = {
           inline_keyboard: [
-            [{ text: "▶️ Watch in Telegram", url: shortPlayerUrl }],
-            [{ text: "📥 Direct Download", url: streamUrl }]
+            [{ text: "▶️ Watch Online (Instant HD)", url: shortPlayerUrl }]
           ]
         };
+        if (streamUrl) {
+          replyMarkup.inline_keyboard.push([{ text: "⚡ Direct Fast Download", url: streamUrl }]);
+        }
 
         // 1. Delete original raw link post
         try {

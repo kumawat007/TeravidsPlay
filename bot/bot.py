@@ -62,12 +62,28 @@ def extract_url_from_message(message: types.Message) -> str:
     return ""
 
 
+def extract_title_hint_from_message(message: types.Message, raw_url: str) -> str:
+    """Extracts custom video title or caption written by the user alongside the link."""
+    import re
+    text = (message.text or message.caption or "").strip()
+    if not text:
+        return ""
+    # Remove the raw URL
+    cleaned = text.replace(raw_url, "").strip()
+    # Strip multiple line breaks or markdown links
+    cleaned = re.sub(r'[\r\n]+', ' ', cleaned).strip()
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    if len(cleaned) >= 3 and not cleaned.startswith("http"):
+        return cleaned[:120]
+    return ""
+
+
 def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "") -> tuple[types.InlineKeyboardMarkup, str]:
     """Builds direct-to-player inline buttons with 100% OWN BRAND short player URL."""
     markup = types.InlineKeyboardMarkup(row_width=1)
 
     if PLAYER_URL and surl:
-        # 100% Own Domain Short URL (e.g. https://teravidsplayer.vercel.app/?v=18XBu...)
+        # Clean own domain web player URL: https://teravidsplayer.vercel.app/?v=surl
         player_link = f"{PLAYER_URL}/?v={surl}"
     elif PLAYER_URL:
         encoded_stream = urllib.parse.quote(stream_url)
@@ -77,9 +93,9 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
     else:
         player_link = stream_url
 
-    # In-Telegram Web Player Button
+    # High-CTR, Ultra-Clean Action Buttons
     watch_btn = types.InlineKeyboardButton(
-        text="▶️ Watch in Telegram",
+        text="▶️ Watch Online (Instant HD)",
         url=player_link,
     )
     markup.add(watch_btn)
@@ -87,7 +103,7 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
     # Direct Download link (only added if direct stream URL is available)
     if stream_url:
         download_btn = types.InlineKeyboardButton(
-            text="📥 Direct Download",
+            text="⚡ Direct Fast Download",
             url=stream_url,
         )
         markup.add(download_btn)
@@ -97,15 +113,23 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
 
 def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, markup: types.InlineKeyboardMarkup, short_link: str = ""):
     """Sends the formatted video card with photo or text fallback."""
-    safe_title = html.escape(title)
-    short_link_section = f"\n🔗 <b>Watch Link:</b> {short_link}\n" if short_link else "\n"
-    caption = (
-        f"🎬 <b>{safe_title}</b>\n\n"
-        f"📦 <b>Size:</b> {size} | <b>Quality:</b> {quality}\n"
-        f"⚡ <b>Playback:</b> Instant Stream (Zero Ads)"
-        f"{short_link_section}\n"
-        f"👇 <i>Tap below to watch online inside Telegram:</i>"
-    )
+    safe_title = html.escape(title[:120])
+    quality_badge = quality or "Full HD 1080p"
+
+    lines = [
+        f"🎬 <b>{safe_title}</b>\n",
+        "━━━━━━━━━━━━━━━━━━━━━━"
+    ]
+    if size and size not in ["HD Stream", "Unknown Size", "0 B"]:
+        lines.append(f"📦 <b>File Size:</b> {size}")
+    lines.append(f"✨ <b>Quality:</b> {quality_badge}")
+    lines.append("⚡ <b>Playback:</b> Instant Stream (Zero Ads)")
+    lines.append("🔊 <b>Audio Boost:</b> 300% Amplification")
+    lines.append("📱 <b>Touch Controls:</b> 2X/4X Turbo • 10s Seek")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━\n")
+    lines.append("👇 <b>Tap below to stream instantly:</b>")
+
+    caption = "\n".join(lines)
 
     if thumb_url and thumb_url.startswith("http"):
         try:
@@ -131,37 +155,27 @@ def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, m
 @bot.channel_post_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 @bot.edited_channel_post_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 def handle_channel_post(message: types.Message):
-    """Catches TeraBox links posted directly in the channel."""
+    """Catches TeraBox links posted directly in the channel and replaces them smoothly with the video card."""
     logger.info(f"Incoming channel post in chat ID {message.chat.id}: {message.text or message.caption}")
     raw_url = extract_url_from_message(message)
     if not raw_url or not is_terabox_url(raw_url):
         return
 
-    logger.info(f"Found TeraBox link in channel: {raw_url}")
-
-    waiting_msg = None
-    try:
-        waiting_msg = bot.send_message(
-            chat_id=message.chat.id,
-            text="⚡ <b>Analyzing TeraBox video...</b>\n<i>Generating high-speed stream & web player...</i>",
-        )
-    except Exception as e:
-        logger.warning(f"Could not post waiting message in channel: {e}")
+    logger.info(f"Processing TeraBox link in channel: {raw_url}")
+    title_hint = extract_title_hint_from_message(message, raw_url)
 
     data = extractor.get_video_stream(raw_url)
     surl = data.get("surl") or extractor.parse_surl(raw_url) or ""
 
     if data.get("success"):
-        title = data.get("title", "TeraBox Video")
+        title = data.get("title") or title_hint or "TeraBox Video"
         size = data.get("size_formatted", "")
-        quality = data.get("quality", "HD")
+        quality = data.get("quality", "HD 1080p")
         stream_url = data.get("stream_url")
         thumb_url = data.get("thumbnail")
     elif surl:
-        # Datacenter cloud IP was blocked from extracting metadata ahead of time,
-        # but the Web Player client-side resolver will stream the video 100% smoothly!
         logger.info(f"Using instant Web Player fallback for channel post: {surl}")
-        title = "TeraBox Video Stream"
+        title = title_hint or "TeraBox Video Stream"
         size = "HD Stream"
         quality = "HD 1080p"
         stream_url = ""
@@ -172,23 +186,6 @@ def handle_channel_post(message: types.Message):
             bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         except Exception:
             pass
-        if waiting_msg:
-            try:
-                bot.edit_message_text(
-                    chat_id=message.chat.id,
-                    message_id=waiting_msg.message_id,
-                    text=f"❌ <b>Stream Extraction Failed:</b>\n{data.get('message', 'Link expired or invalid.')}\n\n<i>This notice will auto-delete in 15 seconds.</i>",
-                )
-                def auto_delete_notice(chat_id, msg_id):
-                    import time
-                    time.sleep(15)
-                    try:
-                        bot.delete_message(chat_id=chat_id, message_id=msg_id)
-                    except Exception:
-                        pass
-                threading.Thread(target=auto_delete_notice, args=(message.chat.id, waiting_msg.message_id), daemon=True).start()
-            except Exception:
-                pass
         return
 
     markup, short_link = build_channel_markup(
@@ -198,21 +195,7 @@ def handle_channel_post(message: types.Message):
         surl=surl,
     )
 
-    # 1. Delete original raw link post to keep the channel clean
-    try:
-        bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-        logger.info(f"Deleted raw post {message.message_id} in channel.")
-    except Exception as e:
-        logger.info(f"Could not delete original post: {e}")
-
-    # 2. Delete temporary waiting message
-    if waiting_msg:
-        try:
-            bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
-        except Exception:
-            pass
-
-    # 3. Publish clean media card in channel
+    # 1. Publish sleek media card directly to channel
     sent_msg = publish_card(
         chat_id=message.chat.id,
         title=title,
@@ -223,6 +206,13 @@ def handle_channel_post(message: types.Message):
         short_link=short_link,
     )
     logger.info(f"Successfully published video card to channel! Message ID: {getattr(sent_msg, 'message_id', 'unknown')}")
+
+    # 2. Delete original raw link post to keep the channel 100% clean
+    try:
+        bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        logger.info(f"Deleted raw post {message.message_id} in channel.")
+    except Exception as e:
+        logger.info(f"Could not delete original post: {e}")
 
 
 # ==============================================================
@@ -265,18 +255,19 @@ def handle_private_post(message: types.Message):
         return
 
     status_msg = bot.reply_to(message, "⚡ <b>Resolving video stream...</b>\n<i>Please wait 1-2 seconds.</i>")
+    title_hint = extract_title_hint_from_message(message, raw_url)
 
     data = extractor.get_video_stream(raw_url)
     surl = data.get("surl") or extractor.parse_surl(raw_url) or ""
 
     if data.get("success"):
-        title = data.get("title", "TeraBox Video")
+        title = data.get("title") or title_hint or "TeraBox Video"
         size = data.get("size_formatted", "")
-        quality = data.get("quality", "HD")
+        quality = data.get("quality", "HD 1080p")
         stream_url = data.get("stream_url")
         thumb_url = data.get("thumbnail")
     elif surl:
-        title = "TeraBox Video Stream"
+        title = title_hint or "TeraBox Video Stream"
         size = "HD Stream"
         quality = "HD 1080p"
         stream_url = ""
