@@ -245,11 +245,25 @@ class TeraBoxExtractor:
 
         surl = self.parse_surl(clean_url) or self.parse_surl(share_url)
 
-        # Step 2: Try High-Speed Edge Engine (Fastest, zero-cookie, HD stream)
-        res = self.resolve_via_highspeed_engine(clean_url)
-        if res and res.get("success"):
-            res["surl"] = surl
-            return res
+        # Build candidate URL list for maximum compatibility across all 12 TeraBox domains
+        candidates = []
+        if surl:
+            formatted_surl = surl if surl.startswith("1") else "1" + surl
+            clean_token = surl.lstrip("1")
+            candidates.append(f"https://1024terabox.com/s/{formatted_surl}")
+            candidates.append(f"https://terabox.com/s/{formatted_surl}")
+            candidates.append(f"https://www.terabox.app/sharing/link?surl={clean_token}")
+        if clean_url not in candidates:
+            candidates.append(clean_url)
+        if share_url not in candidates:
+            candidates.append(share_url)
+
+        # Step 2: Try High-Speed Edge Engine on candidates in priority order
+        for target_url in candidates:
+            res = self.resolve_via_highspeed_engine(target_url)
+            if res and res.get("success"):
+                res["surl"] = surl or formatted_surl
+                return res
 
         # Step 3: Try Direct terabox.app Scraper
         if surl:
