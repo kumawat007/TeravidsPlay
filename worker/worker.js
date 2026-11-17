@@ -114,31 +114,43 @@ export default {
         });
       }
 
-      const fullUrl = surl.startsWith("http") ? surl : `https://1024terabox.com/s/${surl.startsWith("1") ? surl : "1" + surl}`;
-      try {
-        const resolveResp = await fetch("https://iteraplay.in/api/videos/import", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Referer": "https://iteraplay.in/",
-            "Origin": "https://iteraplay.in"
-          },
-          body: JSON.stringify({ url: fullUrl })
-        });
+      const formattedToken = surl.startsWith("http") ? "" : (surl.startsWith("1") ? surl : "1" + surl);
+      const candidates = surl.startsWith("http")
+        ? [surl]
+        : [
+            `https://1024terabox.com/s/${formattedToken}`,
+            `https://terabox.com/s/${formattedToken}`,
+            `https://teraboxapp.com/s/${formattedToken}`
+          ];
 
-        if (resolveResp.ok) {
-          const data = await resolveResp.json();
-          return new Response(JSON.stringify(data), {
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      for (const candidate of candidates) {
+        try {
+          const resolveResp = await fetch("https://iteraplay.in/api/videos/import", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+              "Referer": "https://iteraplay.in/",
+              "Origin": "https://iteraplay.in"
+            },
+            body: JSON.stringify({ url: candidate })
           });
-        }
-      } catch (err) {
-        return new Response(JSON.stringify({ success: false, error: err.message }), {
-          status: 502,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
+
+          if (resolveResp.ok) {
+            const data = await resolveResp.json();
+            if (data && data.success && data.videos && data.videos.length > 0) {
+              return new Response(JSON.stringify(data), {
+                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+              });
+            }
+          }
+        } catch (err) {}
       }
+
+      return new Response(JSON.stringify({ success: false, message: "Stream extraction failed across all candidate endpoints" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
     }
 
     // 3. 24/7 Serverless Telegram Bot Webhook
@@ -175,27 +187,40 @@ export default {
           if (waitData.ok) waitingMsgId = waitData.result.message_id;
         } catch (e) {}
 
-        // Resolve stream via High-Speed Edge Engine
+        // Resolve stream via High-Speed Edge Engine with candidate fallbacks
         let videoData = null;
-        try {
-          const resolveResp = await fetch("https://iteraplay.in/api/videos/import", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-              "Referer": "https://iteraplay.in/",
-              "Origin": "https://iteraplay.in"
-            },
-            body: JSON.stringify({ url: extracted })
-          });
+        const surlExtract = extracted.match(/\/s\/([a-zA-Z0-9_-]+)/);
+        const rawToken = surlExtract ? surlExtract[1] : "";
+        const formattedWebhookToken = rawToken ? (rawToken.startsWith("1") ? rawToken : "1" + rawToken) : "";
+        
+        const webhookCandidates = [extracted];
+        if (formattedWebhookToken) {
+          webhookCandidates.push(`https://1024terabox.com/s/${formattedWebhookToken}`);
+          webhookCandidates.push(`https://terabox.com/s/${formattedWebhookToken}`);
+        }
 
-          if (resolveResp.ok) {
-            const data = await resolveResp.json();
-            if (data.success && data.videos && data.videos.length > 0) {
-              videoData = data.videos[0];
+        for (const candidate of webhookCandidates) {
+          try {
+            const resolveResp = await fetch("https://iteraplay.in/api/videos/import", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Referer": "https://iteraplay.in/",
+                "Origin": "https://iteraplay.in"
+              },
+              body: JSON.stringify({ url: candidate })
+            });
+
+            if (resolveResp.ok) {
+              const data = await resolveResp.json();
+              if (data && data.success && data.videos && data.videos.length > 0) {
+                videoData = data.videos[0];
+                break;
+              }
             }
-          }
-        } catch (e) {}
+          } catch (e) {}
+        }
 
         if (!videoData || !videoData.stream_url) {
           // Resolution failed

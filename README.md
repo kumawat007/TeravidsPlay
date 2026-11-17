@@ -122,22 +122,28 @@ Cloudflare Workers can host both the **Video Streaming Proxy** and the **Telegra
 
 ---
 
-### Method B: Render.com Cloud Worker (Python 24/7)
+### Method B: Render.com Cloud Web Service (Python 24/7 Free)
 
 If you prefer running the Python bot (`bot.py`) in the cloud:
 
-1. Push this repository to your GitHub account.
-2. Sign in to [Render.com](https://render.com) and click **New +** ➔ **Background Worker**.
-3. Connect your GitHub repository.
+1. Push this repository to your GitHub account (`server` branch).
+2. Sign in to [Render.com](https://render.com) and click **New +** ➔ **Web Service**.
+3. Connect your GitHub repository `kumawat007/TeravidsPlay` and choose branch `server`.
 4. Set configurations:
+   * **Root Directory:** `bot`
    * **Runtime:** `Python 3`
-   * **Build Command:** `pip install -r bot/requirements.txt`
-   * **Start Command:** `python bot/bot.py`
+   * **Build Command:** `pip install -r requirements.txt`
+   * **Start Command:** `python bot.py`
+   * **Instance Type:** `Free`
 5. In the **Environment Variables** section, add:
-   * `BOT_TOKEN`
-   * `TARGET_CHANNEL_ID`
-   * `PLAYER_URL`
-6. Click **Create Background Worker**. The bot stays permanently online in the cloud for free!
+   * `BOT_TOKEN`: `8825071392:AAHaBtp81Cv_PC4yz5NxCes5GCkAhO7Q4zM`
+   * `TARGET_CHANNEL_ID`: `@teravidsplayer` (or `-1004492752425`)
+   * `PLAYER_URL`: `https://teravidsplayer.vercel.app/`
+   * `WORKER_URL`: `https://teravidsplay.proxyking.workers.dev`
+6. Click **Create Web Service**. 
+   * TeravidsPlay includes an integrated background HTTP health daemon listening on `$PORT` (Port 10000 on Render).
+   * It also includes a **resilient 409 Conflict handler** so Render's zero-downtime rolling deployments transition smoothly without crashing.
+   * Render datacenter IP blocks are automatically bypassed via edge routing through Cloudflare Worker (`WORKER_URL`).
 
 ---
 

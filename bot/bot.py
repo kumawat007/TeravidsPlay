@@ -9,8 +9,10 @@ Optimized for Telegram Channels & Direct Messaging:
 
 import os
 import sys
+import time
 import html
 import logging
+import threading
 import urllib.parse
 from dotenv import load_dotenv
 import telebot
@@ -365,17 +367,37 @@ if __name__ == "__main__":
     # Start health server for Render / Koyeb cloud hosting (if PORT is set)
     start_health_server()
 
-    # Automatically clear any active webhook before starting polling to prevent 409 Conflict
-    try:
-        bot.delete_webhook(drop_pending_updates=False)
-        logger.info("Cleared active webhook. Polling started successfully.")
-    except Exception as e:
-        logger.warning(f"Webhook reset notice: {e}")
-    
-    # Explicitly listen to all channel posts & messages
-    bot.infinity_polling(
-        skip_pending=True,
-        timeout=20,
-        long_polling_timeout=20,
-        allowed_updates=["message", "edited_message", "channel_post", "edited_channel_post"]
-    )
+    # Resilient polling engine: Handles Render rolling deployments & dual-instance 409 conflicts
+    while True:
+        try:
+            # Clear any stale webhooks or dangling polling sessions
+            try:
+                bot.delete_webhook(drop_pending_updates=True)
+                time.sleep(1)
+            except Exception as e:
+                logger.warning(f"Webhook reset notice: {e}")
+
+            logger.info("Telegram polling loop started successfully...")
+            bot.infinity_polling(
+                skip_pending=True,
+                timeout=20,
+                long_polling_timeout=20,
+                allowed_updates=["message", "edited_message", "channel_post", "edited_channel_post"],
+                restart_on_change=False
+            )
+        except telebot.apihelper.ApiTelegramException as e:
+            if e.error_code == 409:
+                logger.warning(
+                    "Telegram 409 Conflict: Another bot instance or Render rolling deployment is active. "
+                    "Waiting 5 seconds for previous instance to release connection before reconnecting..."
+                )
+                time.sleep(5)
+            else:
+                logger.error(f"Telegram API Exception: {e}. Reconnecting in 5 seconds...")
+                time.sleep(5)
+        except KeyboardInterrupt:
+            logger.info("Bot manually terminated by user.")
+            break
+        except Exception as e:
+            logger.error(f"Unexpected bot polling exception: {e}. Reconnecting in 5 seconds...")
+            time.sleep(5)

@@ -7,6 +7,7 @@ Features:
 - Personal NDUS override (optional).
 """
 
+import os
 import re
 import urllib.parse
 from typing import Dict, Any, Optional
@@ -83,13 +84,57 @@ def shorten_url(long_url: str) -> str:
 
 
 class TeraBoxExtractor:
-    def __init__(self, ndus_cookie: Optional[str] = None):
-        self.ndus_cookie = (ndus_cookie or "").strip()
+    def __init__(self, ndus_cookie: Optional[str] = None, worker_url: Optional[str] = None):
+        self.ndus_cookie = (ndus_cookie or os.getenv("NDUS_COOKIE", "")).strip()
+        self.worker_url = (worker_url or os.getenv("WORKER_URL", "https://teravidsplay.proxyking.workers.dev")).rstrip("/")
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
         if self.ndus_cookie:
             self.session.cookies.set("ndus", self.ndus_cookie, domain=".terabox.com")
             self.session.cookies.set("lang", "en", domain=".terabox.com")
+
+    def resolve_via_worker_engine(self, surl_or_url: str) -> Optional[Dict[str, Any]]:
+        """
+        Primary Engine for Cloud & Datacenter Deployments (Render / Koyeb / VPS):
+        Queries the Cloudflare Edge Worker API to bypass datacenter IP rate-limits and captchas.
+        """
+        if not self.worker_url:
+            return None
+        try:
+            endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(surl_or_url)}"
+            resp = self.session.get(endpoint, timeout=20)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("success") and data.get("videos"):
+                    video = data["videos"][0]
+                    title = video.get("title", "TeraBox Video")
+                    size = video.get("size", 0)
+                    stream_url = video.get("stream_url")
+                    
+                    fast_streams = video.get("fast_stream_url", {})
+                    hls_url = None
+                    if isinstance(fast_streams, dict):
+                        hls_url = fast_streams.get("720p") or fast_streams.get("1080p") or fast_streams.get("480p") or fast_streams.get("360p")
+
+                    thumb = video.get("thumbnailUrl")
+                    quality = video.get("quality", "HD")
+
+                    if stream_url:
+                        return {
+                            "success": True,
+                            "title": title,
+                            "size_bytes": size,
+                            "size_formatted": format_bytes(size),
+                            "thumbnail": thumb,
+                            "stream_url": stream_url,
+                            "hls_url": hls_url,
+                            "download_url": stream_url,
+                            "quality": quality,
+                            "source": "Cloudflare Edge Engine",
+                        }
+        except Exception as e:
+            print(f"[TeraBoxExtractor] Worker Engine notice: {e}")
+        return None
 
     def parse_surl(self, share_url: str) -> Optional[str]:
         """Extracts the unique shorturl token from any TeraBox URL pattern."""
@@ -258,14 +303,27 @@ class TeraBoxExtractor:
         if share_url not in candidates:
             candidates.append(share_url)
 
-        # Step 2: Try High-Speed Edge Engine on candidates in priority order
+        # Step 2: Try Cloudflare Edge Worker API (Primary Engine: Bypasses datacenter IP blocks)
+        if surl:
+            worker_res = self.resolve_via_worker_engine(surl)
+            if worker_res and worker_res.get("success"):
+                worker_res["surl"] = surl or formatted_surl
+                return worker_res
+
+        for target_url in candidates:
+            worker_res = self.resolve_via_worker_engine(target_url)
+            if worker_res and worker_res.get("success"):
+                worker_res["surl"] = surl or formatted_surl
+                return worker_res
+
+        # Step 3: Try High-Speed Edge Engine directly on candidates
         for target_url in candidates:
             res = self.resolve_via_highspeed_engine(target_url)
             if res and res.get("success"):
                 res["surl"] = surl or formatted_surl
                 return res
 
-        # Step 3: Try Direct terabox.app Scraper
+        # Step 4: Try Direct terabox.app Scraper
         if surl:
             fallback_res = self.resolve_via_direct_scraper(surl)
             if fallback_res and fallback_res.get("success"):
