@@ -1,29 +1,15 @@
-# ==============================================================================
-# 🎬 TeravidsPlay — Top-Tier Security & Production .gitignore
-# ==============================================================================
+# ==============================================================
+# TeravidsPlay — Production Secure .gitignore
+# Prevents accidental leakage of tokens, cookies, secrets & artifacts
+# ==============================================================
 
-# ------------------------------------------------------------------------------
-# 1. CRITICAL SECURITY: Environment Variables & Secrets (NEVER COMMIT!)
-# ------------------------------------------------------------------------------
+# --- Environment & Sensitive Secret Files ---
 .env
 .env.*
 *.env
-bot/.env
-worker/.env
-player/.env
-*.pem
-*.key
-*.cert
-*.pfx
-*.p12
-
-# Explicitly allow the safe sample template
 !.env.example
-!bot/.env.example
 
-# ------------------------------------------------------------------------------
-# 2. Python Runtime, Compilations & Virtual Environments
-# ------------------------------------------------------------------------------
+# --- Python Build & Cache ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -41,14 +27,13 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.pytest_cache/
-.coverage
-htmlcov/
+MANIFEST
 
-# Virtual Environments
+# --- Virtual Environments ---
 venv/
 .venv/
 env/
@@ -56,58 +41,41 @@ ENV/
 env.bak/
 venv.bak/
 
-# ------------------------------------------------------------------------------
-# 3. Node.js & Frontend Artifacts (Vercel / Cloudflare Pages)
-# ------------------------------------------------------------------------------
+# --- Node & Frontend Build Artifacts ---
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+.pnpm-debug.log*
 
-# Vercel Deployment Artifacts
-.vercel
-
-# ------------------------------------------------------------------------------
-# 4. Cloudflare Worker Artifacts
-# ------------------------------------------------------------------------------
+# --- Cloud Deployment Caches ---
+.vercel/
 .wrangler/
+.turbo/
+.cache/
 
-# ------------------------------------------------------------------------------
-# 5. Media, Test Chunks & Temporary Files
-# ------------------------------------------------------------------------------
-*.mp4
-*.mkv
-*.webm
-*.ts
-*.m3u8
-*.log
-sample_chunk.*
-full_video.*
-scratch/
-
-# ------------------------------------------------------------------------------
-# 6. Operating System & Editor Files
-# ------------------------------------------------------------------------------
-# macOS
+# --- Operating System & Editor Files ---
 .DS_Store
-.AppleDouble
-.LSOverride
+.DS_Store?
 ._*
-
-# Windows
-Thumbs.db
-Thumbs.db:encryptable
+.Spotlight-V100
+.Trashes
 ehthumbs.db
-ehthumbs_vista.db
+Thumbs.db
 [Dd]esktop.ini
-$RECYCLE.BIN/
-
-# IDEs & Editors
 .idea/
-*.sublime-project
-*.sublime-workspace
+.vscode/
 *.swp
 *.swo
 *~
+
+# --- Media & Test Artifacts ---
+*.mp4
+*.m3u8
+*.ts
+*.mkv
+*.webm
+*.log
+sample_*
+full_*
+test_*

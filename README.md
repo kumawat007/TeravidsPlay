@@ -200,7 +200,7 @@ vercel --prod
 
 | Variable | Required | Description | Example |
 | :--- | :---: | :--- | :--- |
-| `BOT_TOKEN` | **Yes** | Telegram Bot API token obtained from `@BotFather`. | `7123456789:ABC...` |
+| `BOT_TOKEN` | **Yes** | Telegram Bot API token obtained from `@BotFather`. | `8825071392:AAHaB...` |
 | `TARGET_CHANNEL_ID` | **Yes** | The channel where the bot broadcasts and listens. | `@teravidsplayer` or `-1004424072751` |
 | `PLAYER_URL` | **Yes** | Deployed frontend web player URL. | `https://teravidsplayer.vercel.app` |
 | `NDUS_COOKIE` | *Optional* | Personal account session cookie. Leave empty for 100% Auto-Pilot mode. | `M01...` |

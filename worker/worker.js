@@ -9,7 +9,6 @@
  * 3. Built-in URL Shortener proxy & health diagnostics (/health).
  */
 
-const DEFAULT_BOT_TOKEN = ""; // Injected via env.BOT_TOKEN in Cloudflare Settings
 const DEFAULT_PLAYER_URL = "https://teravidsplayer.vercel.app";
 
 const TERABOX_DOMAINS = [
@@ -63,7 +62,7 @@ async function shortenUrl(longUrl) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const botToken = env.BOT_TOKEN || DEFAULT_BOT_TOKEN;
+    const botToken = env.BOT_TOKEN || "";
     const playerBase = (env.PLAYER_URL || DEFAULT_PLAYER_URL).replace(/\/+$/, "");
 
     // 1. CORS Preflight
