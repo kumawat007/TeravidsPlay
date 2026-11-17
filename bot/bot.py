@@ -79,7 +79,7 @@ def extract_title_hint_from_message(message: types.Message, raw_url: str) -> str
 
 
 def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "") -> tuple[types.InlineKeyboardMarkup, str]:
-    """Builds direct-to-player inline buttons with 100% OWN BRAND short player URL."""
+    """Builds direct-to-player inline buttons with vibrant, colorful TOP BEST Design."""
     markup = types.InlineKeyboardMarkup(row_width=1)
 
     if PLAYER_URL and surl:
@@ -93,9 +93,9 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
     else:
         player_link = stream_url
 
-    # High-CTR, Ultra-Clean Action Buttons
+    # Vibrant Colorful High-CTR Action Buttons (TOP BEST 2027 Design)
     watch_btn = types.InlineKeyboardButton(
-        text="▶️ Watch Online (Instant HD)",
+        text="🟢 ▶️ WATCH ONLINE (FULL HD) 🍿",
         url=player_link,
     )
     markup.add(watch_btn)
@@ -103,7 +103,7 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
     # Direct Download link (only added if direct stream URL is available)
     if stream_url:
         download_btn = types.InlineKeyboardButton(
-            text="⚡ Direct Fast Download",
+            text="⚡ 📥 FAST DIRECT DOWNLOAD 🚀",
             url=stream_url,
         )
         markup.add(download_btn)
@@ -114,22 +114,13 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
 def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, markup: types.InlineKeyboardMarkup, short_link: str = ""):
     """Sends the formatted video card with photo or text fallback."""
     safe_title = html.escape(title[:120])
-    quality_badge = quality or "Full HD 1080p"
 
-    lines = [
-        f"🎬 <b>{safe_title}</b>\n",
-        "━━━━━━━━━━━━━━━━━━━━━━"
-    ]
+    # Ultra-clean caption: strictly Title & Size (all spam/clutter removed)
+    lines = [f"🎬 <b>{safe_title}</b>"]
     if size and size not in ["HD Stream", "Unknown Size", "0 B"]:
-        lines.append(f"📦 <b>File Size:</b> {size}")
-    lines.append(f"✨ <b>Quality:</b> {quality_badge}")
-    lines.append("⚡ <b>Playback:</b> Instant Stream (Zero Ads)")
-    lines.append("🔊 <b>Audio Boost:</b> 300% Amplification")
-    lines.append("📱 <b>Touch Controls:</b> 2X/4X Turbo • 10s Seek")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━\n")
-    lines.append("👇 <b>Tap below to stream instantly:</b>")
+        lines.append(f"📦 <b>Size:</b> {size}")
 
-    caption = "\n".join(lines)
+    caption = "\n\n".join(lines)
 
     if thumb_url and thumb_url.startswith("http"):
         try:

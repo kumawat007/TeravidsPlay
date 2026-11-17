@@ -274,28 +274,19 @@ export default {
           : `${playerBase}/?stream=${encodeURIComponent(streamUrl)}&title=${encodeURIComponent(title)}&size=${encodeURIComponent(sizeFormatted)}`;
 
         const cleanTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 120);
-        const lines = [
-          `🎬 <b>${cleanTitle}</b>\n`,
-          "━━━━━━━━━━━━━━━━━━━━━━"
-        ];
+        const lines = [`🎬 <b>${cleanTitle}</b>`];
         if (sizeFormatted && sizeFormatted !== "HD Stream" && sizeFormatted !== "0 B" && sizeFormatted !== "Unknown Size") {
-          lines.push(`📦 <b>File Size:</b> ${sizeFormatted}`);
+          lines.push(`📦 <b>Size:</b> ${sizeFormatted}`);
         }
-        lines.push(`✨ <b>Quality:</b> ${quality}`);
-        lines.push("⚡ <b>Playback:</b> Instant Stream (Zero Ads)");
-        lines.push("🔊 <b>Audio Boost:</b> 300% Amplification");
-        lines.push("📱 <b>Touch Controls:</b> 2X/4X Turbo • 10s Seek");
-        lines.push("━━━━━━━━━━━━━━━━━━━━━━\n");
-        lines.push("👇 <b>Tap below to stream instantly:</b>");
-        const caption = lines.join("\n");
+        const caption = lines.join("\n\n");
 
         const replyMarkup = {
           inline_keyboard: [
-            [{ text: "▶️ Watch Online (Instant HD)", url: shortPlayerUrl }]
+            [{ text: "🟢 ▶️ WATCH ONLINE (FULL HD) 🍿", url: shortPlayerUrl }]
           ]
         };
         if (streamUrl) {
-          replyMarkup.inline_keyboard.push([{ text: "⚡ Direct Fast Download", url: streamUrl }]);
+          replyMarkup.inline_keyboard.push([{ text: "⚡ 📥 FAST DIRECT DOWNLOAD 🚀", url: streamUrl }]);
         }
 
         // 1. Delete original raw link post

@@ -336,13 +336,19 @@ document.addEventListener('DOMContentLoaded', () => {
   screenLockBtn.addEventListener('click', toggleScreenLock);
   screenUnlockBtn.addEventListener('click', toggleScreenLock);
 
-  // 9. Aspect Ratio Switcher (contain -> cover -> fill)
-  const aspectModes = ['contain', 'cover', 'fill'];
-  const aspectLabels = { contain: 'Fit', cover: 'Fill', fill: 'Stretch' };
+  // 9. Aspect Ratio Switcher (contain -> cinemascope -> cover -> fill)
+  const aspectModes = ['contain', 'cinemascope', 'cover', 'fill'];
+  const aspectLabels = { contain: 'Fit', cinemascope: '21:9 Cinema', cover: 'Zoom', fill: 'Stretch' };
   let currentAspectIdx = 0;
 
   function setAspectRatio(mode) {
-    videoElement.style.objectFit = mode;
+    if (mode === 'cinemascope') {
+      videoElement.style.objectFit = 'cover';
+      videoElement.style.transform = 'scaleY(1.18)';
+    } else {
+      videoElement.style.transform = 'none';
+      videoElement.style.objectFit = mode;
+    }
     aspectRatioLabel.textContent = aspectLabels[mode] || 'Fit';
     document.querySelectorAll('#aspectPills .pill-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.aspect === mode);
@@ -352,6 +358,51 @@ document.addEventListener('DOMContentLoaded', () => {
   aspectRatioBtn.addEventListener('click', () => {
     currentAspectIdx = (currentAspectIdx + 1) % aspectModes.length;
     setAspectRatio(aspectModes[currentAspectIdx]);
+  });
+
+  // 9.1 Dynamic 2027 Ambient Lighting Engine
+  const ambientCanvas = document.getElementById('ambientCanvas');
+  const ambientCtx = ambientCanvas ? ambientCanvas.getContext('2d', { willReadFrequently: false }) : null;
+  let isAmbientOn = true;
+  let ambientRafId = null;
+
+  function renderAmbientLoop() {
+    if (!isAmbientOn || !ambientCtx || videoElement.paused || videoElement.ended) {
+      return;
+    }
+    try {
+      if (videoElement.readyState >= 2) {
+        ambientCtx.drawImage(videoElement, 0, 0, ambientCanvas.width, ambientCanvas.height);
+      }
+    } catch (e) {
+      return;
+    }
+    ambientRafId = requestAnimationFrame(renderAmbientLoop);
+  }
+
+  function setAmbientMode(enabled) {
+    isAmbientOn = enabled;
+    if (ambientCanvas) {
+      ambientCanvas.style.opacity = enabled ? '0.5' : '0';
+    }
+    document.querySelectorAll('#ambientPills .pill-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.ambient === 'on') === enabled);
+    });
+    if (isAmbientOn && !videoElement.paused) {
+      cancelAnimationFrame(ambientRafId);
+      ambientRafId = requestAnimationFrame(renderAmbientLoop);
+    }
+  }
+
+  videoElement.addEventListener('play', () => {
+    if (isAmbientOn) {
+      cancelAnimationFrame(ambientRafId);
+      ambientRafId = requestAnimationFrame(renderAmbientLoop);
+    }
+  });
+
+  videoElement.addEventListener('pause', () => {
+    cancelAnimationFrame(ambientRafId);
   });
 
   // 10. Sleep Timer
@@ -410,6 +461,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = e.target.closest('.pill-btn');
     if (btn) setSleepTimer(parseInt(btn.dataset.sleep, 10));
   });
+
+  const ambientPills = document.getElementById('ambientPills');
+  if (ambientPills) {
+    ambientPills.addEventListener('click', (e) => {
+      const btn = e.target.closest('.pill-btn');
+      if (btn) setAmbientMode(btn.dataset.ambient === 'on');
+    });
+  }
 
   // 12. Auto-Resume Position via localStorage
   const storageKey = 'tb_resume_' + btoa(cleanTitle).slice(0, 24);

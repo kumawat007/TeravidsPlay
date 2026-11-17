@@ -36,6 +36,7 @@
     <header class="app-header" id="appHeader">
       <div class="header-left">
         <span class="live-dot" title="Ready to stream"></span>
+        <span class="cinema-badge">🎬 2027 CINEMA</span>
         <h1 id="videoTitle" class="video-title">Loading Stream...</h1>
       </div>
       <div class="header-right">
@@ -140,6 +141,9 @@
         </div>
       </div>
 
+      <!-- Dynamic 2027 Ambient Glow Canvas -->
+      <canvas id="ambientCanvas" class="ambient-canvas" width="64" height="36"></canvas>
+
       <!-- HTML5 Video Container with CrossOrigin for Web Audio API support -->
       <video id="player" playsinline crossorigin="anonymous" controls preload="metadata"></video>
     </main>
@@ -147,7 +151,7 @@
     <!-- Footer Meta & Advanced Mobile Controls -->
     <footer class="app-footer" id="appFooter">
       <div class="footer-left">
-        <span class="badge" id="formatBadge">HD STREAM</span>
+        <span class="badge" id="formatBadge">4K HDR ULTRA</span>
         <span class="meta-item" id="fileSize">Processing</span>
       </div>
 
@@ -238,11 +242,21 @@
 
       <!-- Section: Video Scale / Aspect -->
       <div class="sheet-section">
-        <label class="sheet-label">Screen Fit</label>
+        <label class="sheet-label">Cinema Aspect Ratio</label>
         <div class="pill-group" id="aspectPills">
           <button class="pill-btn active" data-aspect="contain">Fit (Original)</button>
+          <button class="pill-btn" data-aspect="cinemascope">21:9 Cinemascope 🎬</button>
           <button class="pill-btn" data-aspect="cover">Fill (Zoom)</button>
           <button class="pill-btn" data-aspect="fill">Stretch</button>
+        </div>
+      </div>
+
+      <!-- Section: Cinema Atmosphere (2027 Ambient Lighting) -->
+      <div class="sheet-section">
+        <label class="sheet-label">Cinema Atmosphere</label>
+        <div class="pill-group" id="ambientPills">
+          <button class="pill-btn active" data-ambient="on">✨ Ambient Glow (On)</button>
+          <button class="pill-btn" data-ambient="off">Dark Backdrop (Off)</button>
         </div>
       </div>
 
