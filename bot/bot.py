@@ -147,13 +147,25 @@ def handle_channel_post(message: types.Message):
     data = extractor.get_video_stream(raw_url)
     if not data.get("success"):
         logger.warning(f"Resolution failed for channel post: {data.get('message')}")
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        except Exception:
+            pass
         if waiting_msg:
             try:
                 bot.edit_message_text(
                     chat_id=message.chat.id,
                     message_id=waiting_msg.message_id,
-                    text=f"❌ <b>Stream Extraction Failed:</b>\n{data.get('message', 'Link expired or invalid.')}",
+                    text=f"❌ <b>Stream Extraction Failed:</b>\n{data.get('message', 'Link expired or invalid.')}\n\n<i>This notice will auto-delete in 15 seconds.</i>",
                 )
+                def auto_delete_notice(chat_id, msg_id):
+                    import time
+                    time.sleep(15)
+                    try:
+                        bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                    except Exception:
+                        pass
+                threading.Thread(target=auto_delete_notice, args=(message.chat.id, waiting_msg.message_id), daemon=True).start()
             except Exception:
                 pass
         return
