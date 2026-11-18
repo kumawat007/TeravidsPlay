@@ -1,6 +1,7 @@
-// TeravidsPlay — 2027 YouTube-Style Cinema Player Engine
-// Features: YouTube Watch Layout, Mandatory Channel Lock Gate,
-// Web Audio API 300% Boost, 2X/4X Turbo Speed, Double-Tap Seek,
+// TeravidsPlay — Official YouTube-Style Cinema Player Engine
+// Features: Dual-View Architecture (Home Welcome vs Player),
+// Mandatory Channel Lock Gate, Web Audio API 300% Boost,
+// 2X / 4X Ultra-Turbo Long-Press Speed, Double-Tap Seek,
 // Aspect Ratio Switcher, and Instant CDN Video Playback.
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,12 +11,17 @@ document.addEventListener('DOMContentLoaded', () => {
     tg.ready();
     tg.expand();
     try {
-      tg.setHeaderColor('#0f0f0f');
-      tg.setBackgroundColor('#0f0f0f');
+      tg.setHeaderColor('#0a0e17');
+      tg.setBackgroundColor('#0a0e17');
     } catch (e) {}
   }
 
   // 2. DOM Elements
+  const homePage = document.getElementById('homePage');
+  const playerView = document.getElementById('playerView');
+  const homeInputForm = document.getElementById('homeInputForm');
+  const homeUrlInput = document.getElementById('homeUrlInput');
+
   const videoElement = document.getElementById('player');
   const playerContainer = document.getElementById('playerContainer');
   const loader = document.getElementById('loader');
@@ -29,7 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const brightnessBar = document.getElementById('brightnessBar');
   const brightnessText = document.getElementById('brightnessText');
   const volumeHud = document.getElementById('volumeHud');
-  const volumeHudIcon = document.getElementById('volumeHudIcon');
   const volumeBar = document.getElementById('volumeBar');
   const volumeText = document.getElementById('volumeText');
   const rippleLeft = document.getElementById('rippleLeft');
@@ -42,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const retryBtn = document.getElementById('retryBtn');
   const externalDownloadBtn = document.getElementById('externalDownloadBtn');
 
-  // YouTube Metadata & Action Elements
+  // Video Toolbar Elements
   const videoTitleElem = document.getElementById('videoTitle');
   const formatBadgeElem = document.getElementById('formatBadge');
   const fileSizeElem = document.getElementById('fileSize');
@@ -52,17 +57,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const aspectRatioLabel = document.getElementById('aspectRatioLabel');
   const downloadActionBtn = document.getElementById('downloadActionBtn');
   const copyLinkBtn = document.getElementById('copyLinkBtn');
-  const likeBtn = document.getElementById('likeBtn');
-  const likeCountElem = document.getElementById('likeCount');
-  const ytSearchForm = document.getElementById('ytSearchForm');
-  const ytSearchInput = document.getElementById('ytSearchInput');
 
   // Mandatory Channel Lock Gate Elements
   const channelGateOverlay = document.getElementById('channelGateOverlay');
   const gateJoinBtn = document.getElementById('gateJoinBtn');
   const gateUnlockBtn = document.getElementById('gateUnlockBtn');
 
-  // Disable right-click on video container
+  // Disable context menu on player
   if (playerContainer) playerContainer.addEventListener('contextmenu', (e) => e.preventDefault());
   if (videoElement) videoElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -82,9 +83,17 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${min}:${sec < 10 ? '0' : ''}${sec}`;
   }
 
-  // 3. Parse Parameters
+  function showToast(text) {
+    if (resumeToast && resumeToastText) {
+      resumeToastText.textContent = text;
+      resumeToast.style.display = 'block';
+      setTimeout(() => { resumeToast.style.display = 'none'; }, 2600);
+    }
+  }
+
+  // 3. Parse Parameters & View Toggle
   const urlParams = new URLSearchParams(window.location.search);
-  const vId = urlParams.get('v') || urlParams.get('s') || '';
+  let vId = urlParams.get('v') || urlParams.get('s') || '';
   let rawStream = urlParams.get('stream') || '';
   const rawTitle = urlParams.get('title') || '';
   const rawSize = urlParams.get('size') || '';
@@ -95,29 +104,79 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
   }
 
-  const streamUrl = safeDecode(rawStream);
+  let streamUrl = safeDecode(rawStream);
   const cleanTitle = safeDecode(rawTitle);
   const cleanSize = safeDecode(rawSize);
 
-  if (cleanTitle) {
-    videoTitleElem.textContent = cleanTitle;
-    document.title = `${cleanTitle} — TeravidsPlay`;
-  } else if (vId || streamUrl) {
-    videoTitleElem.textContent = 'Loading video stream...';
-    document.title = 'TeravidsPlay — YouTube Cinema Stream';
-  } else {
-    videoTitleElem.textContent = 'Ready to Stream — Paste any TeraBox link above to watch';
+  // Check if we have active media
+  const hasMedia = Boolean(vId || streamUrl);
+
+  function activateHomeView() {
+    if (homePage) homePage.style.display = 'flex';
+    if (playerView) playerView.style.display = 'none';
     document.title = 'TeravidsPlay — Ad-Free Cinema Cloud Video Player';
+    if (videoElement && !videoElement.paused) {
+      videoElement.pause();
+    }
   }
 
-  if (cleanSize) {
-    fileSizeElem.textContent = `📦 ${cleanSize}`;
-    fileSizeElem.style.display = 'inline';
+  function activatePlayerView() {
+    if (homePage) homePage.style.display = 'none';
+    if (playerView) playerView.style.display = 'block';
+  }
+
+  if (hasMedia) {
+    activatePlayerView();
+    if (cleanTitle) {
+      videoTitleElem.textContent = cleanTitle;
+      document.title = `${cleanTitle} — TeravidsPlay`;
+    } else {
+      videoTitleElem.textContent = 'Loading video stream...';
+      document.title = 'TeravidsPlay — High-Speed Cloud Stream';
+    }
+
+    if (cleanSize) {
+      fileSizeElem.textContent = `📦 ${cleanSize}`;
+      fileSizeElem.style.display = 'inline';
+    } else {
+      fileSizeElem.style.display = 'none';
+    }
   } else {
-    fileSizeElem.style.display = 'none';
+    activateHomeView();
   }
 
-  // 4. Mandatory Telegram Channel Membership Gate
+  // 4. Home Page Input Handler (Paste link -> Instant Stream)
+  if (homeInputForm && homeUrlInput) {
+    homeInputForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const val = homeUrlInput.value.trim();
+      if (!val) return;
+
+      let extractedId = '';
+      const m1 = val.match(/\/s\/([a-zA-Z0-9_-]+)/);
+      if (m1) {
+        extractedId = m1[1];
+      } else if (val.includes('surl=')) {
+        extractedId = val.split('surl=')[1].split('&')[0];
+      } else if (/^[a-zA-Z0-9_-]{15,35}$/.test(val)) {
+        extractedId = val;
+      }
+
+      activatePlayerView();
+
+      if (extractedId) {
+        vId = extractedId;
+        try { history.pushState(null, '', `/?v=${encodeURIComponent(extractedId)}`); } catch (err) {}
+        resolveAndPlay(extractedId);
+      } else {
+        streamUrl = val;
+        try { history.pushState(null, '', `/?stream=${encodeURIComponent(val)}`); } catch (err) {}
+        loadStream(val);
+      }
+    });
+  }
+
+  // 5. Mandatory Telegram Channel Membership Gate
   const UNLOCK_KEY = 'teravids_channel_unlocked';
   let isChannelUnlocked = localStorage.getItem(UNLOCK_KEY) === 'true';
 
@@ -133,7 +192,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (gateJoinBtn) {
     gateJoinBtn.addEventListener('click', () => {
-      // Guide user: after opening Telegram, prompt them to click button 2
       if (gateUnlockBtn) {
         gateUnlockBtn.style.animation = 'pulse 1s infinite alternate';
       }
@@ -152,62 +210,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 300);
       }
       showToast('🎉 Channel Verified! Video Unlocked!');
-      // Start video playback
       if (videoElement && videoElement.src) {
         videoElement.play().catch(() => {});
       }
     });
   }
 
-  function showToast(text) {
-    if (resumeToast && resumeToastText) {
-      resumeToastText.textContent = text;
-      resumeToast.style.display = 'block';
-      setTimeout(() => { resumeToast.style.display = 'none'; }, 2600);
-    }
-  }
-
-  // 5. Search / Direct Link Input Handler
-  if (ytSearchForm && ytSearchInput) {
-    ytSearchForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const val = ytSearchInput.value.trim();
-      if (!val) return;
-
-      let token = '';
-      const m1 = val.match(/\/s\/([a-zA-Z0-9_-]+)/);
-      if (m1) {
-        token = m1[1];
-      } else if (val.includes('surl=')) {
-        token = val.split('surl=')[1].split('&')[0];
-      } else if (/^[a-zA-Z0-9_-]{15,35}$/.test(val)) {
-        token = val;
-      }
-
-      if (token) {
-        try { history.replaceState(null, '', `/?v=${encodeURIComponent(token)}`); } catch (err) {}
-        resolveAndPlay(token);
-      } else {
-        try { history.replaceState(null, '', `/?stream=${encodeURIComponent(val)}`); } catch (err) {}
-        loadStream(val);
-      }
-    });
-  }
-
-  // 6. Interactive Like Counter
-  let hasLiked = false;
-  let likes = 1420;
-  if (likeBtn && likeCountElem) {
-    likeBtn.addEventListener('click', () => {
-      hasLiked = !hasLiked;
-      likes += hasLiked ? 1 : -1;
-      likeCountElem.textContent = `${(likes / 1000).toFixed(1)}K`;
-      likeBtn.classList.toggle('active-like', hasLiked);
-      likeBtn.style.color = hasLiked ? '#ff0000' : 'inherit';
-    });
-  }
-
-  // 7. Audio Booster (100% -> 150% -> 200% -> 300%)
+  // 6. Audio Booster (100% -> 150% -> 200% -> 300%)
   let audioCtx = null;
   let gainNode = null;
   let audioBoostLevel = 1.0;
@@ -255,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 8. Aspect Ratio Switcher
+  // 7. Aspect Ratio Switcher (Fit / Fill / Stretch)
   const aspectModes = ['contain', 'cover', 'fill'];
   const aspectLabels = ['Fit', 'Fill', 'Stretch'];
   let aspectIdx = 0;
@@ -269,130 +278,153 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 9. Long-Press 2X Speed (Telegram Style)
+  // 8. YouTube-Style Ultra-Long Press: 2X & 4X Turbo Speed
   let plyrInstance = null;
   let hlsInstance = null;
   let baseSpeed = 1.0;
   let isFastForwarding = false;
-  let pressTimer = null;
+  let pressTimer2x = null;
+  let pressTimer4x = null;
 
   function startLongPress(e) {
-    if (e.target.closest('.plyr__controls') || e.target.closest('button')) return;
-    pressTimer = setTimeout(() => {
+    if (e.target.closest('.plyr__controls') || e.target.closest('button') || e.target.closest('a') || e.target.closest('.channel-gate-card')) return;
+    
+    // Stage 1: Hold 350ms -> 2X Speed
+    pressTimer2x = setTimeout(() => {
       isFastForwarding = true;
+      baseSpeed = videoElement.playbackRate || 1.0;
+      if (baseSpeed > 1.0 && baseSpeed < 2.0) baseSpeed = 1.0;
       videoElement.playbackRate = 2.0;
       if (speedOverlay) {
-        speedOverlayIcon.textContent = '⚡';
-        speedOverlayText.textContent = '2X Speed';
+        if (speedOverlayIcon) speedOverlayIcon.textContent = '⚡';
+        if (speedOverlayText) speedOverlayText.textContent = '2X Speed';
         speedOverlay.style.display = 'block';
       }
-    }, 450);
+    }, 350);
+
+    // Stage 2: Ultra Long Press past 1400ms -> 4X Ultra Turbo Speed
+    pressTimer4x = setTimeout(() => {
+      if (!isFastForwarding) return;
+      videoElement.playbackRate = 4.0;
+      if (speedOverlay) {
+        if (speedOverlayIcon) speedOverlayIcon.textContent = '🚀';
+        if (speedOverlayText) speedOverlayText.textContent = '4X Ultra Turbo';
+        speedOverlay.style.display = 'block';
+      }
+    }, 1400);
   }
 
   function stopLongPress() {
-    clearTimeout(pressTimer);
+    clearTimeout(pressTimer2x);
+    clearTimeout(pressTimer4x);
     if (isFastForwarding) {
       isFastForwarding = false;
-      videoElement.playbackRate = baseSpeed;
+      videoElement.playbackRate = baseSpeed || 1.0;
       if (speedOverlay) speedOverlay.style.display = 'none';
     }
   }
 
-  playerContainer.addEventListener('mousedown', startLongPress);
-  window.addEventListener('mouseup', stopLongPress);
-  playerContainer.addEventListener('touchstart', startLongPress, { passive: true });
-  window.addEventListener('touchend', stopLongPress);
+  if (playerContainer) {
+    playerContainer.addEventListener('mousedown', startLongPress);
+    window.addEventListener('mouseup', stopLongPress);
+    playerContainer.addEventListener('touchstart', startLongPress, { passive: true });
+    window.addEventListener('touchend', stopLongPress);
+  }
 
-  // 10. Double Tap 10s Seek
+  // 9. Double Tap 10s Seek
   let lastTapTime = 0;
   let tapTimeout = null;
 
-  playerContainer.addEventListener('click', (e) => {
-    if (e.target.closest('.plyr__controls') || e.target.closest('button') || e.target.closest('.channel-gate-card')) return;
-    const now = Date.now();
-    const rect = playerContainer.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const isRightSide = clickX > rect.width / 2;
+  if (playerContainer) {
+    playerContainer.addEventListener('click', (e) => {
+      if (e.target.closest('.plyr__controls') || e.target.closest('button') || e.target.closest('.channel-gate-card')) return;
+      const now = Date.now();
+      const rect = playerContainer.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const isRightSide = clickX > rect.width / 2;
 
-    if (now - lastTapTime < 320) {
-      clearTimeout(tapTimeout);
-      if (isRightSide) {
-        videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
-        if (rippleRight) {
-          rippleRight.style.display = 'flex';
-          setTimeout(() => { rippleRight.style.display = 'none'; }, 400);
+      if (now - lastTapTime < 320) {
+        clearTimeout(tapTimeout);
+        if (isRightSide) {
+          videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
+          if (rippleRight) {
+            rippleRight.style.display = 'flex';
+            setTimeout(() => { rippleRight.style.display = 'none'; }, 400);
+          }
+        } else {
+          videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
+          if (rippleLeft) {
+            rippleLeft.style.display = 'flex';
+            setTimeout(() => { rippleLeft.style.display = 'none'; }, 400);
+          }
         }
+        lastTapTime = 0;
       } else {
-        videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
-        if (rippleLeft) {
-          rippleLeft.style.display = 'flex';
-          setTimeout(() => { rippleLeft.style.display = 'none'; }, 400);
-        }
+        lastTapTime = now;
+        tapTimeout = setTimeout(() => { lastTapTime = 0; }, 340);
       }
-      lastTapTime = 0;
-    } else {
-      lastTapTime = now;
-      tapTimeout = setTimeout(() => { lastTapTime = 0; }, 340);
-    }
-  });
+    });
+  }
 
-  // 11. Gesture HUDs for Swiping: Brightness & Volume
+  // 10. Swipe Gestures for Brightness & Volume
   let touchStartX = 0;
   let touchStartY = 0;
   let isSwiping = false;
   let activeHud = null;
   let currentBrightness = 1.0;
 
-  playerContainer.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) return;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    isSwiping = false;
-    activeHud = null;
-  }, { passive: true });
-
-  playerContainer.addEventListener('touchmove', (e) => {
-    if (e.touches.length !== 1) return;
-    const deltaX = e.touches[0].clientX - touchStartX;
-    const deltaY = touchStartY - e.touches[0].clientY;
-
-    if (!isSwiping && Math.abs(deltaY) > 12 && Math.abs(deltaY) > Math.abs(deltaX) * 1.5) {
-      isSwiping = true;
-      const rect = playerContainer.getBoundingClientRect();
-      activeHud = (touchStartX - rect.left) < rect.width / 2 ? 'brightness' : 'volume';
-    }
-
-    if (isSwiping) {
-      const step = deltaY / 220;
+  if (playerContainer) {
+    playerContainer.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
-
-      if (activeHud === 'brightness') {
-        currentBrightness = Math.max(0.2, Math.min(1.5, currentBrightness + step));
-        videoElement.style.filter = `brightness(${currentBrightness})`;
-        if (brightnessBar) brightnessBar.style.height = `${Math.round((currentBrightness / 1.5) * 100)}%`;
-        if (brightnessText) brightnessText.textContent = `${Math.round((currentBrightness / 1.5) * 100)}%`;
-        if (brightnessHud) brightnessHud.style.display = 'flex';
-      } else if (activeHud === 'volume') {
-        const newVol = Math.max(0, Math.min(1, videoElement.volume + step));
-        videoElement.volume = newVol;
-        if (volumeBar) volumeBar.style.height = `${Math.round(newVol * 100)}%`;
-        if (volumeText) volumeText.textContent = `${Math.round(newVol * 100)}%`;
-        if (volumeHud) volumeHud.style.display = 'flex';
-      }
-    }
-  }, { passive: true });
-
-  window.addEventListener('touchend', () => {
-    if (isSwiping) {
-      setTimeout(() => {
-        if (brightnessHud) brightnessHud.style.display = 'none';
-        if (volumeHud) volumeHud.style.display = 'none';
-      }, 400);
       isSwiping = false;
-    }
-  });
+      activeHud = null;
+    }, { passive: true });
 
-  // 12. Dynamic Ambient Glow Canvas
+    playerContainer.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return;
+      const deltaX = e.touches[0].clientX - touchStartX;
+      const deltaY = touchStartY - e.touches[0].clientY;
+
+      if (!isSwiping && Math.abs(deltaY) > 12 && Math.abs(deltaY) > Math.abs(deltaX) * 1.5) {
+        isSwiping = true;
+        const rect = playerContainer.getBoundingClientRect();
+        activeHud = (touchStartX - rect.left) < rect.width / 2 ? 'brightness' : 'volume';
+      }
+
+      if (isSwiping) {
+        const step = deltaY / 220;
+        touchStartY = e.touches[0].clientY;
+
+        if (activeHud === 'brightness') {
+          currentBrightness = Math.max(0.2, Math.min(1.5, currentBrightness + step));
+          videoElement.style.filter = `brightness(${currentBrightness})`;
+          if (brightnessBar) brightnessBar.style.height = `${Math.round((currentBrightness / 1.5) * 100)}%`;
+          if (brightnessText) brightnessText.textContent = `${Math.round((currentBrightness / 1.5) * 100)}%`;
+          if (brightnessHud) brightnessHud.style.display = 'flex';
+        } else if (activeHud === 'volume') {
+          const newVol = Math.max(0, Math.min(1, videoElement.volume + step));
+          videoElement.volume = newVol;
+          if (volumeBar) volumeBar.style.height = `${Math.round(newVol * 100)}%`;
+          if (volumeText) volumeText.textContent = `${Math.round(newVol * 100)}%`;
+          if (volumeHud) volumeHud.style.display = 'flex';
+        }
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+      if (isSwiping) {
+        setTimeout(() => {
+          if (brightnessHud) brightnessHud.style.display = 'none';
+          if (volumeHud) volumeHud.style.display = 'none';
+        }, 400);
+        isSwiping = false;
+      }
+    });
+  }
+
+  // 11. Ambient Glow Canvas
   const ambientCanvas = document.getElementById('ambientCanvas');
   let ambientCtx = null;
   let ambientRaf = null;
@@ -416,11 +448,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!ambientRaf) ambientRaf = requestAnimationFrame(drawAmbient);
   });
   videoElement.addEventListener('pause', () => {
-    cancelAnimationFrame(ambientRaf);
+    if (ambientRaf) cancelAnimationFrame(ambientRaf);
     ambientRaf = null;
   });
 
-  // 13. Auto-Resume from Last Saved Position
+  // 12. Auto-Resume from Last Position
   const storageKey = `teravids_pos_${vId || streamUrl.slice(-25) || 'default'}`;
 
   function checkResume() {
@@ -438,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 14. Initialize Plyr Video Player
+  // 13. Initialize Plyr Video Player (YouTube Styling)
   function initPlyr() {
     if (plyrInstance) return plyrInstance;
 
@@ -451,11 +483,16 @@ document.addEventListener('DOMContentLoaded', () => {
         'duration',
         'mute',
         'volume',
+        'settings',
+        'pip',
         'fullscreen',
       ],
+      settings: ['speed'],
+      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2, 4] },
       storage: { enabled: false },
       keyboard: { focused: true, global: true },
       seekTime: 10,
+      tooltips: { controls: true, seek: true },
     });
 
     videoElement.addEventListener('canplay', () => {
@@ -495,7 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return plyrInstance;
   }
 
-  // 15. Stream Loader
+  // 14. Stream Loader
   function loadStream(url, poster = '') {
     if (!url) {
       showError('Missing Stream URL', 'No valid stream URL was provided.');
@@ -558,7 +595,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     } else {
-      // Direct MP4
       videoElement.src = url;
       initPlyr();
       videoElement.addEventListener('loadedmetadata', checkResume, { once: true });
@@ -579,12 +615,12 @@ document.addEventListener('DOMContentLoaded', () => {
     errorOverlay.style.display = 'flex';
   }
 
-  // 16. Dynamic Stream Resolver for Own Short IDs (?v=...)
+  // 15. Stream Resolver for TeraBox Short IDs (?v=...)
   async function resolveAndPlay(surl) {
     loader.classList.remove('hidden');
     loaderText.textContent = 'Resolving video details...';
     try {
-      // 1. Try Cloudflare Edge Worker API
+      // Try Cloudflare Edge Worker API
       const workerEndpoint = `https://teravidsplay.proxyking.workers.dev/api/resolve?surl=${encodeURIComponent(surl)}`;
       let res = await fetch(workerEndpoint).catch(() => null);
       let data = null;
@@ -592,7 +628,7 @@ document.addEventListener('DOMContentLoaded', () => {
         data = await res.json();
       }
 
-      // 2. Direct edge resolver fallback
+      // Edge resolver fallback
       if (!data || !data.success) {
         const fullTeraUrl = `https://1024terabox.com/s/${surl.startsWith('1') ? surl : '1' + surl}`;
         const directResp = await fetch('https://iteraplay.in/api/videos/import', {
@@ -639,7 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 17. Button Listeners
+  // 16. Button Event Listeners
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
       if (vId) resolveAndPlay(vId);
@@ -661,7 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(shareUrl);
-        showToast('🔗 Video Link copied to clipboard!');
+        showToast('🔗 Video link copied to clipboard!');
       }
     });
   }
@@ -674,14 +710,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Start Stream
+  // 17. Initiate stream if parameter was present
   if (vId) {
     resolveAndPlay(vId);
   } else if (streamUrl) {
     loadStream(streamUrl);
-  } else {
-    loader.classList.add('hidden');
-    // Set default poster if on home page
-    videoElement.poster = 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=1200&q=80';
   }
 });

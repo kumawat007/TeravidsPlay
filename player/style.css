@@ -1,27 +1,22 @@
 :root {
   /* YouTube Native Dark Mode Palette */
-  --yt-bg-main: #0f0f0f;
-  --yt-bg-nav: #0f0f0f;
-  --yt-bg-surface: #212121;
-  --yt-bg-surface-hover: #272727;
-  --yt-bg-card: #1f1f1f;
-  --yt-border: #272727;
-  --yt-border-light: rgba(255, 255, 255, 0.1);
-  --yt-text-main: #f1f1f1;
-  --yt-text-muted: #aaaaaa;
-  --yt-text-secondary: #717171;
+  --yt-bg-main: #0a0e17;
+  --yt-bg-nav: #0f1523;
+  --yt-bg-surface: #151d30;
+  --yt-bg-surface-hover: #1c2740;
+  --yt-bg-card: #131b2e;
+  --yt-border: rgba(255, 255, 255, 0.08);
+  --yt-text-main: #f8fafc;
+  --yt-text-muted: #94a3b8;
   --yt-red: #ff0000;
-  --yt-red-hover: #cc0000;
-  --yt-blue: #3ea6ff;
-  --tg-color: #0088cc;
-  --tg-gradient: linear-gradient(135deg, #0088cc 0%, #00aaff 100%);
+  --tg-blue: #0088cc;
+  --tg-gradient: linear-gradient(135deg, #0088cc 0%, #00b4d8 100%);
   --gold-color: #f59e0b;
   --gold-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  --gold-glow: rgba(245, 158, 11, 0.35);
 
-  /* Plyr YouTube Red Scrubber Theme */
+  /* Plyr YouTube Red Scrubber */
   --plyr-color-main: #ff0000;
-  --plyr-video-controls-background: linear-gradient(0deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+  --plyr-video-controls-background: linear-gradient(0deg, rgba(10, 14, 23, 0.95) 0%, rgba(10, 14, 23, 0.4) 60%, transparent 100%);
   --plyr-video-control-color: #ffffff;
   --plyr-video-control-color-hover: #ff0000;
   --plyr-range-thumb-height: 14px;
@@ -39,226 +34,322 @@ html, body {
   min-height: 100%;
   background-color: var(--yt-bg-main);
   color: var(--yt-text-main);
-  font-family: 'Roboto', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
 
 /* ==========================================================================
-   1. YOUTUBE TOP NAVBAR
+   1. NAVBAR
    ========================================================================== */
-.yt-navbar {
+.app-navbar {
   position: sticky;
   top: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  height: 58px;
   background-color: var(--yt-bg-nav);
   border-bottom: 1px solid var(--yt-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 20px;
   z-index: 100;
+  backdrop-filter: blur(12px);
 }
 
 .nav-left {
   display: flex;
   align-items: center;
-  flex-shrink: 0;
 }
 
-.yt-logo {
+/* 1. Telegram Logo + TeravidsPlay (links to channel) */
+.nav-brand {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   text-decoration: none;
   color: #ffffff;
+  transition: opacity 0.2s ease;
 }
 
-.yt-logo-badge {
+.nav-brand:hover {
+  opacity: 0.9;
+}
+
+.telegram-icon-badge {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.yt-brand-text {
+.nav-brand-title {
   font-size: 19px;
   font-weight: 800;
-  letter-spacing: -0.6px;
-  font-family: 'Plus Jakarta Sans', 'Roboto', sans-serif;
-}
-
-.nav-center {
-  flex: 1;
-  max-width: 600px;
-  margin: 0 24px;
-}
-
-.yt-search-form {
-  width: 100%;
-}
-
-.yt-search-box {
-  display: flex;
-  width: 100%;
-  background: #121212;
-  border: 1px solid #303030;
-  border-radius: 40px;
-  overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.yt-search-box:focus-within {
-  border-color: #1c62b9;
-  box-shadow: 0 0 10px rgba(28, 98, 185, 0.4);
-}
-
-.yt-search-box input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #fff;
-  padding: 8px 16px;
-  font-size: 14px;
-  font-family: inherit;
-}
-
-.yt-search-box input::placeholder {
-  color: #717171;
-}
-
-.yt-search-box button {
-  background: #222222;
-  border: none;
-  border-left: 1px solid #303030;
-  color: #aaaaaa;
-  padding: 0 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.yt-search-box button:hover {
-  color: #ffffff;
-  background: #272727;
+  letter-spacing: -0.5px;
 }
 
 .nav-right {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-shrink: 0;
 }
 
-/* Buy Me a Coffee Action Button */
-.yt-coffee-btn {
+.nav-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--gold-gradient);
-  color: #ffffff;
-  text-decoration: none;
   font-size: 12px;
   font-weight: 700;
-  padding: 6px 13px;
+  padding: 6px 14px;
   border-radius: 20px;
-  box-shadow: 0 2px 10px var(--gold-glow);
+  text-decoration: none;
   transition: transform 0.15s ease, filter 0.15s ease;
   white-space: nowrap;
 }
 
-.yt-coffee-btn:hover {
+.nav-pill:hover {
   transform: translateY(-1px);
   filter: brightness(1.1);
 }
 
-/* Join Channel Navbar Button */
-.yt-tg-channel-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.nav-pill-telegram {
   background: var(--tg-gradient);
   color: #ffffff;
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px 13px;
-  border-radius: 20px;
   box-shadow: 0 2px 10px rgba(0, 136, 204, 0.35);
-  transition: transform 0.15s ease, filter 0.15s ease;
-  white-space: nowrap;
 }
 
-.yt-tg-channel-btn:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.1);
+.nav-pill-github {
+  background: #24292e;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #ffffff;
 }
 
-/* Developer Signature */
-.yt-dev-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: #212121;
-  border: 1px solid #303030;
-  color: #e5e5e5;
-  text-decoration: none;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 5px 11px;
-  border-radius: 20px;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.yt-dev-badge:hover {
-  border-color: var(--yt-blue);
-  color: #fff;
-  transform: translateY(-1px);
-}
-
-.dev-tag {
-  background: #ff0000;
-  color: #fff;
-  font-size: 8.5px;
-  font-weight: 800;
-  padding: 1px 5px;
-  border-radius: 4px;
+.nav-pill-coffee {
+  background: var(--gold-gradient);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.35);
 }
 
 /* ==========================================================================
-   2. YOUTUBE WATCH LAYOUT (MAIN 2-COLUMN GRID)
+   2. HOME PAGE VIEW (Clean, Smooth, Cute Welcome Interface)
    ========================================================================== */
-.yt-watch-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
-  gap: 24px;
-  max-width: 1720px;
-  margin: 0 auto;
-  padding: 24px 24px 60px;
+.home-container {
+  min-height: calc(100vh - 58px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+  background: radial-gradient(circle at 50% 20%, rgba(0, 136, 204, 0.1) 0%, transparent 60%);
 }
 
-.yt-primary-col {
+.home-card {
+  background: var(--yt-bg-surface);
+  border: 1px solid var(--yt-border);
+  border-radius: 24px;
+  padding: 40px 32px;
+  max-width: 620px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  animation: fadeIn 0.35s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.home-badge-icon {
+  margin-bottom: 12px;
+}
+
+.cute-emoji {
+  font-size: 46px;
+  display: inline-block;
+  animation: bounce 2s infinite ease-in-out;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.home-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+  margin-bottom: 14px;
+}
+
+.home-cute-msg {
+  font-size: 14px;
+  color: var(--yt-text-muted);
+  line-height: 1.6;
+  margin-bottom: 26px;
+}
+
+.home-input-form {
+  margin-bottom: 24px;
+}
+
+.home-input-group {
+  display: flex;
+  background: rgba(10, 14, 23, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 6px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-input-group:focus-within {
+  border-color: var(--tg-blue);
+  box-shadow: 0 0 16px rgba(0, 136, 204, 0.35);
+}
+
+.home-input-group input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-family: inherit;
+}
+
+.home-input-group input::placeholder {
+  color: #64748b;
+}
+
+.home-play-btn {
+  background: #ff0000;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 0 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.15s ease, filter 0.15s ease;
+  white-space: nowrap;
+}
+
+.home-play-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.home-actions-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.home-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.home-action-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+
+.btn-tg {
+  background: var(--tg-gradient);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 136, 204, 0.3);
+}
+
+.btn-gh {
+  background: #24292e;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.btn-cf {
+  background: var(--gold-gradient);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3);
+}
+
+.home-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.home-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 20px;
+}
+
+.home-footer-meta {
+  border-top: 1px solid var(--yt-border);
+  padding-top: 18px;
+  font-size: 12.5px;
+  color: var(--yt-text-muted);
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.home-footer-meta a {
+  color: #38bdf8;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.home-footer-meta a:hover {
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   3. VIDEO PLAYER VIEW (Shown ONLY during playback)
+   ========================================================================== */
+.player-view-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+
+.player-inner-col {
   display: flex;
   flex-direction: column;
 }
 
-/* 16:9 Video Player Viewport */
-.yt-player-container {
+/* 16:9 Viewport */
+.video-viewport {
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000000;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
 }
 
-.yt-player-container video {
+.video-viewport video {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -267,7 +358,7 @@ html, body {
 .plyr {
   width: 100% !important;
   height: 100% !important;
-  border-radius: 12px !important;
+  border-radius: 14px !important;
 }
 
 /* Dynamic Ambient Glow */
@@ -279,46 +370,17 @@ html, body {
   width: 100%;
   height: 100%;
   filter: blur(48px) saturate(200%);
-  opacity: 0.35;
+  opacity: 0.4;
   pointer-events: none;
   z-index: 0;
   transition: opacity 0.5s ease;
-}
-
-/* On-Screen Watermark */
-.yt-screen-watermark {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #e5e5e5;
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 10px;
-  font-weight: 700;
-  text-decoration: none;
-  z-index: 25;
-  opacity: 0.85;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.yt-screen-watermark:hover {
-  opacity: 1;
-  color: #fff;
-  border-color: var(--gold-color);
-  transform: translateY(-1px);
 }
 
 /* Loader */
 .loader-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(10, 14, 23, 0.88);
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
@@ -348,34 +410,28 @@ html, body {
 }
 
 #loaderText {
-  font-size: 14px;
-  color: #f1f1f1;
-  font-weight: 500;
+  font-size: 13.5px;
+  color: #f1f5f9;
+  font-weight: 600;
 }
 
 /* ==========================================================================
-   3. MANDATORY TELEGRAM CHANNEL GATE (WELCOME INTERFACE LOCK)
+   4. MANDATORY TELEGRAM CHANNEL GATE
    ========================================================================== */
 .channel-gate-overlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, rgba(20, 20, 20, 0.95) 0%, rgba(8, 8, 8, 0.98) 100%);
+  background: radial-gradient(circle at center, rgba(15, 21, 35, 0.95) 0%, rgba(8, 12, 20, 0.98) 100%);
   backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
   z-index: 40;
-  animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
 }
 
 .channel-gate-card {
-  background: rgba(33, 33, 33, 0.92);
+  background: rgba(21, 29, 48, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
   padding: 30px 24px;
@@ -408,7 +464,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .gate-btn {
@@ -448,122 +504,63 @@ html, body {
 .gate-features-row {
   font-size: 11.5px;
   color: var(--yt-text-muted);
-  margin-bottom: 14px;
-}
-
-.gate-coffee-support {
-  display: inline-block;
-  font-size: 11.5px;
-  color: var(--gold-color);
-  text-decoration: none;
-  font-weight: 600;
-  transition: opacity 0.2s ease;
-}
-
-.gate-coffee-support:hover {
-  opacity: 0.8;
-  text-decoration: underline;
 }
 
 /* ==========================================================================
-   4. YOUTUBE VIDEO METADATA & CHANNEL BAR
+   5. VIDEO META SECTION & CONTROLS
    ========================================================================== */
-.yt-video-info {
-  margin-top: 14px;
+.video-info-section {
+  margin-top: 16px;
 }
 
-.yt-title {
-  font-size: 19px;
-  font-weight: 700;
+.video-main-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
   line-height: 1.35;
-  color: var(--yt-text-main);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
-.yt-metadata-row {
+.video-controls-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.yt-channel-card {
-  display: flex;
-  align-items: center;
   gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--yt-border);
 }
 
-.yt-avatar {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #ff0000 0%, #0088cc 100%);
-  border-radius: 50%;
+.toolbar-left {
   display: flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 10px rgba(255, 0, 0, 0.3);
+  gap: 8px;
 }
 
-.yt-channel-names {
-  display: flex;
-  flex-direction: column;
+.format-badge {
+  background: rgba(255, 0, 0, 0.15);
+  color: #ff4d4d;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 0, 0, 0.3);
 }
 
-.yt-channel-title {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 15px;
+.meta-item {
+  font-size: 12.5px;
   font-weight: 700;
-  color: #fff;
+  color: #38bdf8;
 }
 
-.yt-verified-badge {
-  background: var(--yt-blue);
-  color: #000;
-  font-size: 10px;
-  font-weight: 900;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.yt-subscriber-count {
-  font-size: 12px;
-  color: var(--yt-text-muted);
-}
-
-.yt-subscribe-btn {
-  background: #ffffff;
-  color: #0f0f0f;
-  font-size: 13.5px;
-  font-weight: 700;
-  padding: 9px 18px;
-  border-radius: 20px;
-  text-decoration: none;
-  margin-left: 8px;
-  transition: opacity 0.2s ease, transform 0.15s ease;
-}
-
-.yt-subscribe-btn:hover {
-  opacity: 0.9;
-  transform: scale(1.02);
-}
-
-/* Action Buttons */
-.yt-action-buttons {
+.toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.yt-action-pill {
+.tool-action-btn {
   background: var(--yt-bg-surface);
   border: 1px solid var(--yt-border);
   color: var(--yt-text-main);
@@ -576,199 +573,60 @@ html, body {
   align-items: center;
   gap: 6px;
   text-decoration: none;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
   font-family: inherit;
+  transition: all 0.15s ease;
 }
 
-.yt-action-pill:hover {
+.tool-action-btn:hover {
   background: var(--yt-bg-surface-hover);
-  border-color: #383838;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
-.highlight-pill {
-  background: #222222;
-  border-color: var(--yt-red);
+.highlight-btn {
+  background: rgba(255, 0, 0, 0.12);
+  border-color: rgba(255, 0, 0, 0.35);
+  color: #ff4d4d;
+}
+
+.highlight-btn:hover {
+  background: #ff0000;
   color: #ffffff;
+  border-color: #ff0000;
 }
 
-.highlight-pill:hover {
-  background: var(--yt-red);
-  color: #ffffff;
-  border-color: var(--yt-red);
-}
-
-.coffee-pill {
-  border-color: rgba(245, 158, 11, 0.4);
-}
-
-.coffee-pill:hover {
-  border-color: var(--gold-color);
-  background: rgba(245, 158, 11, 0.15);
-}
-
-.yt-action-pill.active-boost {
+.tool-action-btn.active-boost {
   background: rgba(255, 0, 0, 0.2);
   color: #ff4d4d;
   border-color: #ff0000;
 }
 
-/* ==========================================================================
-   5. YOUTUBE DESCRIPTION BOX
-   ========================================================================== */
-.yt-description-box {
-  background: var(--yt-bg-surface);
-  border: 1px solid var(--yt-border);
-  border-radius: 12px;
-  padding: 14px 16px;
-  font-size: 13.5px;
-  line-height: 1.55;
-  transition: background 0.2s ease;
-}
-
-.yt-description-box:hover {
-  background: var(--yt-bg-surface-hover);
-}
-
-.desc-stats {
+/* 6. Video Creator Footer (Only Developer & Channel Attribution) */
+.video-creator-footer {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--yt-text-muted);
   display: flex;
   align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
-  gap: 8px;
-  font-weight: 700;
-  color: var(--yt-text-main);
-  margin-bottom: 8px;
 }
 
-.desc-dot {
-  color: var(--yt-text-secondary);
-}
-
-.format-badge {
-  background: rgba(255, 0, 0, 0.15);
-  color: #ff4d4d;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 2px 7px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 0, 0, 0.3);
-}
-
-.meta-item {
-  color: var(--yt-blue);
-  font-weight: 700;
-}
-
-.desc-content p {
-  color: #cccccc;
-  margin-bottom: 12px;
-}
-
-.desc-credits {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 10px;
-  border-top: 1px solid #303030;
-  font-size: 12.5px;
-  color: var(--yt-text-muted);
-}
-
-.desc-credits a {
-  color: var(--yt-blue);
+.video-creator-footer a {
+  color: #38bdf8;
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.desc-credits a:hover {
+.video-creator-footer a:hover {
   text-decoration: underline;
 }
 
-/* ==========================================================================
-   6. YOUTUBE SIDEBAR (RECOMMENDED STREAM GUIDES)
-   ========================================================================== */
-.yt-secondary-col {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.sidebar-header h3 {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--yt-text-main);
-}
-
-.yt-sidebar-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.yt-side-card {
-  display: flex;
-  gap: 10px;
-  cursor: pointer;
-  text-decoration: none;
-  color: inherit;
-  transition: transform 0.15s ease;
-}
-
-.yt-side-card:hover {
-  transform: translateX(2px);
-}
-
-.side-thumb {
-  position: relative;
-  width: 150px;
-  height: 84px;
-  flex-shrink: 0;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #1f1f1f;
-}
-
-.side-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.thumb-duration {
-  position: absolute;
-  bottom: 5px;
-  right: 5px;
-  background: rgba(0, 0, 0, 0.85);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 5px;
-  border-radius: 4px;
-}
-
-.side-info {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.side-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--yt-text-main);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.side-channel, .side-views {
-  font-size: 11.5px;
-  color: var(--yt-text-muted);
+.video-creator-footer .sep {
+  color: rgba(255, 255, 255, 0.2);
 }
 
 /* ==========================================================================
-   7. GESTURES & HUD OVERLAYS
+   6. GESTURES & HUDs
    ========================================================================== */
 .unmute-overlay {
   position: absolute;
@@ -778,7 +636,7 @@ html, body {
 }
 
 .unmute-banner-btn {
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
   padding: 6px 12px;
@@ -797,14 +655,15 @@ html, body {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.85);
-  border: 1px solid #ff0000;
+  background: rgba(10, 14, 23, 0.9);
+  border: 1.5px solid #ff0000;
   color: #fff;
-  padding: 6px 14px;
+  padding: 6px 16px;
   border-radius: 20px;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 800;
-  z-index: 22;
+  z-index: 25;
+  box-shadow: 0 0 16px rgba(255, 0, 0, 0.4);
 }
 
 .gesture-hud {
@@ -869,7 +728,7 @@ html, body {
   bottom: 60px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(33, 33, 33, 0.95);
+  background: rgba(21, 29, 48, 0.95);
   border: 1px solid var(--yt-border);
   color: #fff;
   padding: 8px 16px;
@@ -883,7 +742,7 @@ html, body {
 .error-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(15, 15, 15, 0.92);
+  background: rgba(10, 14, 23, 0.94);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -892,17 +751,17 @@ html, body {
 }
 
 .error-card {
-  background: #212121;
-  border: 1px solid #333333;
+  background: var(--yt-bg-surface);
+  border: 1px solid var(--yt-border);
   border-radius: 14px;
-  padding: 24px;
+  padding: 26px 20px;
   text-align: center;
   max-width: 360px;
 }
 
 .error-icon { font-size: 36px; margin-bottom: 8px; }
 .error-card h3 { font-size: 16px; color: #ff4d4d; margin-bottom: 6px; }
-.error-card p { font-size: 12.5px; color: #aaa; margin-bottom: 16px; }
+.error-card p { font-size: 12.5px; color: var(--yt-text-muted); margin-bottom: 16px; }
 .error-actions { display: flex; gap: 8px; justify-content: center; }
 
 .btn {
@@ -918,30 +777,14 @@ html, body {
 .btn-secondary { background: #333; color: #fff; }
 
 /* ==========================================================================
-   8. RESPONSIVE MEDIA QUERIES (MOBILE OPTIMIZATION)
+   7. RESPONSIVE QUERIES
    ========================================================================== */
-@media (max-width: 1024px) {
-  .yt-watch-layout {
-    grid-template-columns: 1fr;
-    padding: 16px 16px 60px;
-  }
-}
-
 @media (max-width: 768px) {
-  .nav-center { display: none; }
-  .yt-coffee-btn .coffee-text { display: none; }
-  .yt-dev-badge .dev-tag { display: none; }
-  .yt-watch-layout { padding: 12px 12px 50px; }
-  .yt-title { font-size: 16px; }
-  .yt-metadata-row { flex-direction: column; align-items: flex-start; }
-  .yt-action-buttons { width: 100%; overflow-x: auto; padding-bottom: 6px; }
-  .yt-action-buttons::-webkit-scrollbar { display: none; }
-}
-
-@media (max-width: 480px) {
-  .yt-tg-channel-btn .tg-label { display: none; }
-  .yt-dev-badge { display: none; }
-  .channel-gate-card { padding: 22px 16px; }
-  .gate-title { font-size: 17px; }
-  .gate-subtitle { font-size: 12px; }
+  .app-navbar { padding: 0 14px; }
+  .nav-pill span { display: none; }
+  .player-view-container { padding: 12px 10px 40px; }
+  .video-main-title { font-size: 16.5px; }
+  .toolbar-right { width: 100%; overflow-x: auto; padding-bottom: 4px; }
+  .home-card { padding: 28px 18px; }
+  .home-title { font-size: 22px; }
 }

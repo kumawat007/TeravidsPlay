@@ -6,12 +6,12 @@
   <title>TeravidsPlay — Ad-Free Cinema Cloud Video Player</title>
 
   <!-- SEO & OpenGraph -->
-  <meta name="description" content="YouTube-style cinema cloud video player for Telegram & TeraBox with audio boost, zero ads, and fast direct downloads." />
-  <meta property="og:title" content="TeravidsPlay — YouTube Style Cinema Player" />
-  <meta property="og:description" content="Watch TeraBox videos in Full HD 1080p with 300% audio boost and fast direct download." />
+  <meta name="description" content="Ultra-fast, ad-free cinema video player for Telegram & TeraBox with YouTube controls, 4X ultra-long press speed, and 300% sound boost." />
+  <meta property="og:title" content="TeravidsPlay — Ad-Free Cinema Video Player" />
+  <meta property="og:description" content="Watch TeraBox videos in Full HD with 4X ultra turbo speed and 300% sound boost." />
   
-  <!-- Inline SVG Favicon -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23ff0000'/><polygon points='40,28 75,50 40,72' fill='%23ffffff'/></svg>" />
+  <!-- Inline SVG Favicon (Telegram Blue Icon) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='%230088cc'/><path d='M17.5 7.5L5.5 12l4 1.5 1.5 4.5 2.5-2.5 4 3 2.5-12z' fill='%23ffffff'/></svg>" />
 
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -23,7 +23,7 @@
   <!-- HLS.js for Adaptive Streams -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 
-  <!-- Google Font: Roboto & Plus Jakarta Sans -->
+  <!-- Google Fonts: Plus Jakarta Sans & Roboto -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -31,80 +31,134 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="yt-theme">
-  <!-- Top Navigation Bar (YouTube Style) -->
-  <header class="yt-navbar">
+  <!-- Top Navigation Bar -->
+  <header class="app-navbar">
     <div class="nav-left">
-      <a href="/" class="yt-logo" title="TeravidsPlay Home">
-        <div class="yt-logo-badge">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="#ff0000">
-            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+      <!-- 1. Telegram Logo + TeravidsPlay (links to official Telegram channel) -->
+      <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="nav-brand" title="TeravidsPlay — Official Telegram Channel">
+        <div class="telegram-icon-badge">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="#0088cc">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>
           </svg>
         </div>
-        <span class="yt-brand-text">TeravidsPlay</span>
+        <span class="nav-brand-title">TeravidsPlay</span>
       </a>
-    </div>
-
-    <div class="nav-center">
-      <form id="ytSearchForm" class="yt-search-form" onsubmit="return false;">
-        <div class="yt-search-box">
-          <input type="text" id="ytSearchInput" placeholder="Paste any TeraBox video link to watch..." autocomplete="off" spellcheck="false" />
-          <button type="submit" id="ytSearchBtn" title="Play Video">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-          </button>
-        </div>
-      </form>
     </div>
 
     <div class="nav-right">
-      <!-- Buy Me a Coffee Action -->
-      <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="yt-coffee-btn" title="Support creator on Buy Me a Coffee">
-        <span class="coffee-icon">☕</span>
-        <span class="coffee-text">Buy me a coffee</span>
-      </a>
-
-      <!-- Telegram Channel Button -->
-      <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="yt-tg-channel-btn" title="Join @teravidsplayer Channel">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <!-- Join Telegram Channel -->
+      <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="nav-pill nav-pill-telegram" title="Join @teravidsplayer on Telegram">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>
         </svg>
-        <span class="tg-label">Join Channel</span>
+        <span>Join Channel</span>
       </a>
 
-      <!-- Developer Signature -->
-      <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="yt-dev-badge" title="Developed by KUMAWAT⁰⁰⁷ PRINTs">
-        <span class="dev-tag">DEV</span>
-        <span class="dev-name">KUMAWAT⁰⁰⁷ PRINTs</span>
+      <!-- GitHub Link -->
+      <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer" class="nav-pill nav-pill-github" title="Developer GitHub">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+
+      <!-- Buy Me a Coffee Link -->
+      <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="nav-pill nav-pill-coffee" title="Buy me a coffee">
+        <span>☕</span>
+        <span>Coffee</span>
       </a>
     </div>
   </header>
 
-  <!-- YouTube Main Watch Page Layout -->
-  <main class="yt-watch-layout">
-    <!-- Primary Video Section -->
-    <section class="yt-primary-col">
-      <!-- 16:9 Cinema Video Container -->
-      <div class="yt-player-container" id="playerContainer">
+  <!-- ============================================================== -->
+  <!-- 1. HOME PAGE VIEW (Shown ONLY when no video link is provided)   -->
+  <!-- ============================================================== -->
+  <div id="homePage" class="home-container" style="display: none;">
+    <div class="home-card">
+      <div class="home-badge-icon">
+        <span class="cute-emoji">🍿</span>
+      </div>
+
+      <h1 class="home-title">Welcome to TeravidsPlay!</h1>
+
+      <!-- Visitor Small Cute Message -->
+      <p class="home-cute-msg">
+        Hey there! ✨ Grab your popcorn and enjoy your private, ad-free cinema zone.
+        Watch any TeraBox video in <b>Full HD 1080p</b> with <b>300% sound boost</b> and <b>4X ultra turbo speed</b>. Zero ads, pure streaming joy! 🚀
+      </p>
+
+      <!-- Paste Link Box -->
+      <form id="homeInputForm" class="home-input-form" onsubmit="return false;">
+        <div class="home-input-group">
+          <input type="text" id="homeUrlInput" placeholder="Paste any TeraBox video link here to watch..." autocomplete="off" spellcheck="false" required />
+          <button type="submit" id="homePlayBtn" class="home-play-btn">
+            <span>▶ Play Video</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Action Buttons Row -->
+      <div class="home-actions-row">
+        <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="home-action-btn btn-tg">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>
+          </svg>
+          <span>Join Telegram Channel</span>
+        </a>
+
+        <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer" class="home-action-btn btn-gh">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+
+        <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="home-action-btn btn-cf">
+          <span>☕</span>
+          <span>Buy me a coffee</span>
+        </a>
+      </div>
+
+      <!-- Feature Chips -->
+      <div class="home-chips-row">
+        <span class="home-chip">⚡ Zero Ads</span>
+        <span class="home-chip">🔊 300% Sound Boost</span>
+        <span class="home-chip">⏩ 4X Ultra Turbo Speed</span>
+        <span class="home-chip">🍿 1080p Full HD</span>
+      </div>
+
+      <!-- Home Footer Credit -->
+      <div class="home-footer-meta">
+        <span>👨‍💻 Creator: Developed by <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer">KUMAWAT⁰⁰⁷ PRINTs</a></span>
+        <span>📢 Official Channel: <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer">@teravidsplayer</a></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- 2. VIDEO PLAYER VIEW (Shown ONLY during video streaming)        -->
+  <!-- ============================================================== -->
+  <div id="playerView" class="player-view-container" style="display: none;">
+    <div class="player-inner-col">
+      <!-- 16:9 Cinema Viewport -->
+      <div class="video-viewport" id="playerContainer">
         <!-- Ambient Glow Canvas -->
         <canvas id="ambientCanvas" class="ambient-canvas" width="64" height="36"></canvas>
 
-        <!-- Loading Spinner -->
+        <!-- Loader -->
         <div id="loader" class="loader-overlay">
           <div class="spinner"></div>
           <p id="loaderText">Connecting high-speed stream...</p>
         </div>
 
-        <!-- Tap to Unmute Overlay Banner -->
+        <!-- Tap to Unmute Overlay -->
         <div id="unmuteOverlay" class="unmute-overlay" style="display: none;">
           <button id="unmuteBtn" class="unmute-banner-btn">
-            <span class="unmute-icon">🔊</span>
-            <span>Tap to Unmute Audio</span>
+            <span>🔊 Tap to Unmute</span>
           </button>
         </div>
 
-        <!-- Long-Press 2X / 4X Speed Indicator -->
+        <!-- Long-Press 2X & 4X Turbo Speed Overlay -->
         <div id="speedOverlay" class="speed-overlay" style="display: none;">
           <div class="speed-indicator-badge">
             <span id="speedOverlayIcon">⚡</span>
@@ -122,14 +176,14 @@
         </div>
 
         <div id="volumeHud" class="gesture-hud volume-hud" style="display: none;">
-          <span id="volumeHudIcon" class="hud-icon">🔊</span>
+          <span class="hud-icon">🔊</span>
           <div class="hud-bar-track">
             <div id="volumeBar" class="hud-bar-fill" style="height: 100%;"></div>
           </div>
           <span id="volumeText" class="hud-text">100%</span>
         </div>
 
-        <!-- Double Tap Seek Feedback Ripples -->
+        <!-- Double-Tap Seek Ripples -->
         <div id="rippleLeft" class="seek-ripple seek-ripple-left" style="display: none;">
           <div class="ripple-content"><span class="ripple-arrow">««</span> 10s</div>
         </div>
@@ -137,24 +191,18 @@
           <div class="ripple-content">10s <span class="ripple-arrow">»»</span></div>
         </div>
 
-        <!-- Resume Notification Toast -->
+        <!-- Toast Notification -->
         <div id="resumeToast" class="resume-toast" style="display: none;">
           <span id="resumeToastText">Resumed from 00:00</span>
         </div>
 
-        <!-- On-Screen Permanent Watermark -->
-        <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="yt-screen-watermark" title="Crafted by KUMAWAT⁰⁰⁷ PRINTs">
-          <span class="wm-coffee">☕</span>
-          <span class="wm-name">KUMAWAT⁰⁰⁷ PRINTs</span>
-        </a>
-
         <!-- ============================================================== -->
-        <!-- MANDATORY TELEGRAM CHANNEL JOIN LOCK GATE (WELCOME INTERFACE) -->
+        <!-- MANDATORY TELEGRAM CHANNEL JOIN LOCK GATE                     -->
         <!-- ============================================================== -->
         <div id="channelGateOverlay" class="channel-gate-overlay" style="display: flex;">
           <div class="channel-gate-card">
             <div class="gate-lock-icon">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ff0000" stroke-width="2">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#ff0000" stroke-width="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
@@ -166,17 +214,15 @@
             </p>
 
             <div class="gate-actions">
-              <!-- Step 1: Join Channel -->
               <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="gate-btn gate-btn-telegram" id="gateJoinBtn">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>
                 </svg>
                 <span>1. Join @teravidsplayer Channel</span>
               </a>
 
-              <!-- Step 2: I Have Joined (Verify & Unlock) -->
               <button type="button" class="gate-btn gate-btn-unlock" id="gateUnlockBtn">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
                 <span>2. I Have Joined (Unlock & Watch)</span>
@@ -184,16 +230,12 @@
             </div>
 
             <div class="gate-features-row">
-              <span>⚡ Zero Ads</span> • <span>🔊 300% Audio Boost</span> • <span>🍿 1080p Full HD</span>
+              <span>⚡ Zero Ads</span> • <span>🔊 300% Sound Boost</span> • <span>🍿 1080p Full HD</span>
             </div>
-
-            <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="gate-coffee-support">
-              ☕ Crafted by KUMAWAT⁰⁰⁷ PRINTs • Buy me a coffee
-            </a>
           </div>
         </div>
 
-        <!-- Error State Card -->
+        <!-- Error Card -->
         <div id="errorOverlay" class="error-overlay" style="display: none;">
           <div class="error-card">
             <div class="error-icon">⚠️</div>
@@ -206,51 +248,42 @@
           </div>
         </div>
 
-        <!-- HTML5 Video Container with CrossOrigin for Web Audio API support -->
+        <!-- HTML5 Video Player Container -->
         <video id="player" playsinline crossorigin="anonymous" controls preload="metadata"></video>
       </div>
 
-      <!-- Video Details & Metadata Section (YouTube Style) -->
-      <div class="yt-video-info">
-        <!-- Video Title -->
-        <h1 id="videoTitle" class="yt-title">Ready to Stream — Paste any TeraBox link above</h1>
+      <!-- Video Meta & Controls Bar -->
+      <div class="video-info-section">
+        <h1 id="videoTitle" class="video-main-title">Loading Stream...</h1>
 
-        <!-- Channel Row & Action Buttons -->
-        <div class="yt-metadata-row">
-          <!-- Channel Info -->
-          <div class="yt-channel-card">
-            <div class="yt-avatar">
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="#fff">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-              </svg>
-            </div>
-            <div class="yt-channel-names">
-              <div class="yt-channel-title">
-                <span>TeravidsPlay Official</span>
-                <span class="yt-verified-badge" title="Verified Stream">✓</span>
-              </div>
-              <span class="yt-subscriber-count">18.4K members • Telegram Cloud</span>
-            </div>
-            <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="yt-subscribe-btn">
-              Join Channel
-            </a>
+        <div class="video-controls-toolbar">
+          <div class="toolbar-left">
+            <span class="badge format-badge" id="formatBadge">FULL HD</span>
+            <span class="meta-item" id="fileSize"></span>
           </div>
 
-          <!-- YouTube Pill Action Buttons -->
-          <div class="yt-action-buttons">
-            <!-- Like Button -->
-            <div class="yt-action-group">
-              <button id="likeBtn" class="yt-action-pill" title="Like Video">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
-                </svg>
-                <span id="likeCount">1.4K</span>
-              </button>
-            </div>
+          <div class="toolbar-right">
+            <!-- 300% Volume Boost -->
+            <button id="audioBoostBtn" class="tool-action-btn" title="Boost audio up to 300%">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              </svg>
+              <span id="audioBoostLabel">Boost: 100%</span>
+            </button>
 
-            <!-- Fast Direct Download Button -->
-            <a id="downloadActionBtn" href="#" target="_blank" class="yt-action-pill highlight-pill" title="Direct High-Speed Download">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <!-- Aspect Ratio (Fit / Fill / Stretch) -->
+            <button id="aspectRatioBtn" class="tool-action-btn" title="Toggle Aspect Ratio">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                <path d="M7 15l5-5 5 5"></path>
+              </svg>
+              <span id="aspectRatioLabel">Fit</span>
+            </button>
+
+            <!-- Direct Download Button -->
+            <a id="downloadActionBtn" href="#" target="_blank" class="tool-action-btn highlight-btn" title="Direct Download">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -258,27 +291,9 @@
               <span>Download</span>
             </a>
 
-            <!-- Audio Boost 300% Button -->
-            <button id="audioBoostBtn" class="yt-action-pill" title="Boost audio up to 300%">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-              </svg>
-              <span id="audioBoostLabel">Boost: 100%</span>
-            </button>
-
-            <!-- Aspect Ratio Switcher -->
-            <button id="aspectRatioBtn" class="yt-action-pill" title="Toggle Aspect Ratio">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-                <path d="M7 15l5-5 5 5"></path>
-              </svg>
-              <span id="aspectRatioLabel">Fit</span>
-            </button>
-
-            <!-- Share Button -->
-            <button id="copyLinkBtn" class="yt-action-pill" title="Share Video">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <!-- Share Link Button -->
+            <button id="copyLinkBtn" class="tool-action-btn" title="Share Video">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="18" cy="5" r="3"></circle>
                 <circle cx="6" cy="12" r="3"></circle>
                 <circle cx="18" cy="19" r="3"></circle>
@@ -287,103 +302,18 @@
               </svg>
               <span>Share</span>
             </button>
-
-            <!-- Buy Me a Coffee Action Pill -->
-            <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="yt-action-pill coffee-pill" title="Buy me a coffee">
-              <span>☕</span>
-              <span>Support</span>
-            </a>
           </div>
         </div>
 
-        <!-- Video Description Box (YouTube Rounded Card) -->
-        <div class="yt-description-box" id="descBox">
-          <div class="desc-stats">
-            <span id="viewsCount">28,450 views</span>
-            <span class="desc-dot">•</span>
-            <span id="streamTypeLabel">High-Speed Cloud Stream</span>
-            <span class="desc-dot">•</span>
-            <span class="badge format-badge" id="formatBadge">FULL HD</span>
-            <span class="meta-item" id="fileSize"></span>
-          </div>
-
-          <div class="desc-content">
-            <p>
-              Direct high-speed streaming powered by TeravidsPlay Edge Engine.
-              Zero ads, 300% Web Audio amplification, double-tap seek & long-press 2X turbo speed.
-            </p>
-            <div class="desc-credits">
-              <span>👨‍💻 <b>Creator:</b> Developed by <a href="https://buymeacoffee.com/kumawat007" target="_blank">KUMAWAT⁰⁰⁷ PRINTs</a></span>
-              <span>📢 <b>Official Channel:</b> <a href="https://t.me/teravidsplayer" target="_blank">@teravidsplayer</a></span>
-              <span>☕ <b>Buy me a coffee:</b> <a href="https://buymeacoffee.com/kumawat007" target="_blank">https://buymeacoffee.com/kumawat007</a></span>
-            </div>
-          </div>
+        <!-- 6. Developer & Channel Attribution (Only Keep What Was Requested!) -->
+        <div class="video-creator-footer">
+          <span>👨‍💻 <b>Creator:</b> Developed by <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer">KUMAWAT⁰⁰⁷ PRINTs</a></span>
+          <span class="sep">•</span>
+          <span>📢 <b>Official Channel:</b> <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer">@teravidsplayer</a></span>
         </div>
       </div>
-    </section>
-
-    <!-- Secondary Sidebar Column (YouTube Recommended Videos & Features) -->
-    <aside class="yt-secondary-col">
-      <div class="sidebar-header">
-        <h3>Streaming Guide & Quick Access</h3>
-      </div>
-
-      <!-- Guide Video Cards (YouTube Style) -->
-      <div class="yt-sidebar-list">
-        <!-- Card 1: Telegram Bot -->
-        <a href="https://t.me/teravidsplayer" target="_blank" class="yt-side-card">
-          <div class="side-thumb">
-            <img src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=400&q=80" alt="Telegram Bot" />
-            <span class="thumb-duration">24/7</span>
-          </div>
-          <div class="side-info">
-            <h4 class="side-title">Post any TeraBox link to @teravidsplayer on Telegram for instant playable cards</h4>
-            <span class="side-channel">TeravidsPlay Bot ✓</span>
-            <span class="side-views">18.4K members • Channel Bot</span>
-          </div>
-        </a>
-
-        <!-- Card 2: 300% Audio Booster -->
-        <div class="yt-side-card" onclick="document.getElementById('audioBoostBtn').click();">
-          <div class="side-thumb">
-            <img src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80" alt="Audio Booster" />
-            <span class="thumb-duration">300%</span>
-          </div>
-          <div class="side-info">
-            <h4 class="side-title">Web Audio API volume amplifier: Boost sound up to 3X for quiet movie dialogues</h4>
-            <span class="side-channel">TeravidsPlay Feature ✓</span>
-            <span class="side-views">Tap to Boost Audio</span>
-          </div>
-        </div>
-
-        <!-- Card 3: Support Creator -->
-        <a href="https://buymeacoffee.com/kumawat007" target="_blank" class="yt-side-card">
-          <div class="side-thumb">
-            <img src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=400&q=80" alt="Buy Me a Coffee" />
-            <span class="thumb-duration">☕ COFFEE</span>
-          </div>
-          <div class="side-info">
-            <h4 class="side-title">Support project development: Buy KUMAWAT⁰⁰⁷ PRINTs a coffee to keep servers running</h4>
-            <span class="side-channel">KUMAWAT⁰⁰⁷ PRINTs ✓</span>
-            <span class="side-views">buymeacoffee.com/kumawat007</span>
-          </div>
-        </a>
-
-        <!-- Card 4: Zero Ads -->
-        <div class="yt-side-card">
-          <div class="side-thumb">
-            <img src="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400&q=80" alt="Ad-Free Experience" />
-            <span class="thumb-duration">NO ADS</span>
-          </div>
-          <div class="side-info">
-            <h4 class="side-title">Zero popups, zero redirect ads & pure high-definition direct CDN video playback</h4>
-            <span class="side-channel">TeravidsPlay Cinema ✓</span>
-            <span class="side-views">100% Free VIP Access</span>
-          </div>
-        </div>
-      </div>
-    </aside>
-  </main>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
