@@ -250,24 +250,8 @@ export default {
           return new Response("OK", { status: 200 });
         }
 
-        // Only send waiting message in private chat to avoid flicker/double notifications in public channels
+        // Silent direct resolution: No waiting message in channel or chat
         let waitingMsgId = null;
-        const isChannel = msg.chat?.type === "channel";
-        if (!isChannel) {
-          try {
-            const waitResp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: chatId,
-                text: "⚡ <b>Resolving video stream...</b>\n<i>Please wait 1-2 seconds.</i>",
-                parse_mode: "HTML"
-              }),
-            });
-            const waitData = await waitResp.json();
-            if (waitData.ok) waitingMsgId = waitData.result.message_id;
-          } catch (e) {}
-        }
 
         // Resolve stream via High-Speed Edge Engine with candidate fallbacks
         let videoData = null;

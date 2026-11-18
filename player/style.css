@@ -1,20 +1,20 @@
 :root {
-  /* YouTube & Cinema Dark Mode Palette */
-  --cinema-bg: #0a0e17;
-  --cinema-nav: #0f1523;
-  --cinema-surface: #151d30;
-  --cinema-surface-hover: #1c2740;
-  --cinema-border: rgba(255, 255, 255, 0.09);
+  /* YouTube & Cinema Dark Palette */
+  --cinema-bg: #06090e;
+  --cinema-nav: #0b0f19;
+  --cinema-surface: #111827;
+  --cinema-surface-hover: #1f293d;
+  --cinema-border: rgba(255, 255, 255, 0.1);
   --cinema-text: #f8fafc;
   --cinema-text-muted: #94a3b8;
   --yt-red: #ff0000;
-  --yt-red-glow: rgba(255, 0, 0, 0.4);
+  --yt-red-glow: rgba(255, 0, 0, 0.45);
   --tg-blue: #0088cc;
   --tg-gradient: linear-gradient(135deg, #0088cc 0%, #00b4d8 100%);
   --gold-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
 
-  /* Accessible Touch Target Size (Default 36px, 44px on coarse pointers) */
-  --target-size: 36px;
+  /* Accessible Touch Target Size (WCAG 2.5.5) */
+  --target-size: 38px;
 }
 
 @media (pointer: coarse) {
@@ -48,7 +48,7 @@ html, body {
   top: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  height: 54px;
   background-color: var(--cinema-nav);
   border-bottom: 1px solid var(--cinema-border);
   display: flex;
@@ -84,7 +84,7 @@ html, body {
 }
 
 .nav-brand-title {
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.5px;
 }
@@ -99,7 +99,7 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   padding: 6px 14px;
   border-radius: 20px;
@@ -127,26 +127,26 @@ html, body {
 }
 
 /* ==========================================================================
-   2. HOME PAGE VIEW (Welcoming Visitor Interface)
+   2. HOME PAGE VIEW (Clean Cinema Welcome Card)
    ========================================================================== */
 .home-container {
-  min-height: calc(100vh - 56px);
+  min-height: calc(100vh - 54px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 30px 20px;
-  background: radial-gradient(circle at 50% 20%, rgba(0, 136, 204, 0.1) 0%, transparent 60%);
+  background: radial-gradient(circle at 50% 25%, rgba(0, 136, 204, 0.12) 0%, transparent 65%);
 }
 
 .home-card {
   background: var(--cinema-surface);
   border: 1px solid var(--cinema-border);
   border-radius: 24px;
-  padding: 40px 32px;
-  max-width: 620px;
+  padding: 42px 32px;
+  max-width: 580px;
   width: 100%;
   text-align: center;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
   animation: fadeIn 0.35s ease;
 }
 
@@ -156,18 +156,18 @@ html, body {
 }
 
 .home-badge-icon {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .cute-emoji {
-  font-size: 46px;
+  font-size: 52px;
   display: inline-block;
   animation: bounce 2s infinite ease-in-out;
 }
 
 @keyframes bounce {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  50% { transform: translateY(-8px); }
 }
 
 .home-title {
@@ -176,68 +176,13 @@ html, body {
   color: #ffffff;
   letter-spacing: -0.5px;
   margin-bottom: 14px;
-  text-wrap: balance;
 }
 
 .home-cute-msg {
   font-size: 14px;
   color: var(--cinema-text-muted);
   line-height: 1.6;
-  margin-bottom: 26px;
-  text-wrap: pretty;
-}
-
-.home-input-form {
-  margin-bottom: 24px;
-}
-
-.home-input-group {
-  display: flex;
-  background: rgba(10, 14, 23, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 14px;
-  padding: 6px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.home-input-group:focus-within {
-  border-color: var(--tg-blue);
-  box-shadow: 0 0 16px rgba(0, 136, 204, 0.35);
-}
-
-.home-input-group input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #ffffff;
-  padding: 10px 14px;
-  font-size: 13.5px;
-  font-family: inherit;
-}
-
-.home-input-group input::placeholder {
-  color: #64748b;
-}
-
-.home-play-btn {
-  background: var(--yt-red);
-  color: #ffffff;
-  border: none;
-  border-radius: 10px;
-  padding: 0 20px;
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  transition: transform 0.15s ease, filter 0.15s ease;
-  white-space: nowrap;
-  min-height: var(--target-size);
-}
-
-.home-play-btn:hover {
-  filter: brightness(1.15);
-  transform: translateY(-1px);
+  margin-bottom: 28px;
 }
 
 .home-actions-row {
@@ -245,16 +190,16 @@ html, body {
   gap: 12px;
   justify-content: center;
   flex-wrap: wrap;
-  margin-bottom: 24px;
+  margin-bottom: 26px;
 }
 
 .home-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 18px;
-  border-radius: 12px;
-  font-size: 13px;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 14px;
+  font-size: 13.5px;
   font-weight: 700;
   text-decoration: none;
   min-height: var(--target-size);
@@ -262,20 +207,20 @@ html, body {
 }
 
 .home-action-btn:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.1);
+  transform: translateY(-2px);
+  filter: brightness(1.15);
 }
 
 .btn-tg {
   background: var(--tg-gradient);
   color: #ffffff;
-  box-shadow: 0 2px 10px rgba(0, 136, 204, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 136, 204, 0.4);
 }
 
 .btn-cf {
   background: var(--gold-gradient);
   color: #ffffff;
-  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
 }
 
 .home-chips-row {
@@ -292,7 +237,7 @@ html, body {
   color: #cbd5e1;
   font-size: 12px;
   font-weight: 600;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 20px;
 }
 
@@ -318,36 +263,30 @@ html, body {
 }
 
 /* ==========================================================================
-   3. INTEGRATED CINEMA VIDEO PLAYER VIEW
+   3. PRO CINEMA THEATER PLAYER VIEW (Full-Width, Zero Wasted Space!)
    ========================================================================== */
 .player-view-container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 20px 20px 60px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
-.player-inner-col {
-  display: flex;
-  flex-direction: column;
-}
-
-/* 16:9 Cinema Viewport */
+/* Theater Viewport: Occupies Full Width in Horizontal / Desktop */
 .cinema-player-viewport {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: min(84vh, calc(100vw * 9 / 16));
   background: #000000;
-  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.85);
   outline: none;
   user-select: none;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9);
 }
 
 .cinema-player-viewport:fullscreen {
   width: 100vw;
   height: 100vh;
-  max-width: none;
   border-radius: 0;
 }
 
@@ -359,15 +298,15 @@ html, body {
   display: block;
 }
 
-/* Dynamic Ambient Glow */
+/* Dynamic Ambient Glow Behind Player */
 .ambient-canvas {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) scale(1.12);
+  transform: translate(-50%, -50%) scale(1.15);
   width: 100%;
   height: 100%;
-  filter: blur(52px) saturate(200%);
+  filter: blur(56px) saturate(220%);
   opacity: 0.35;
   pointer-events: none;
   z-index: 0;
@@ -375,16 +314,16 @@ html, body {
 }
 
 /* ==========================================================================
-   4. TOP BAR (INSIDE PLAYER)
+   4. TOP BAR (INSIDE PLAYER VIEWPORT)
    ========================================================================== */
 .player-overlay-top {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 64px;
+  height: 60px;
   padding: 0 20px;
-  background: linear-gradient(180deg, rgba(10, 14, 23, 0.88) 0%, rgba(10, 14, 23, 0.4) 60%, transparent 100%);
+  background: linear-gradient(180deg, rgba(6, 9, 14, 0.92) 0%, rgba(6, 9, 14, 0.4) 65%, transparent 100%);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -402,24 +341,24 @@ html, body {
 }
 
 .top-quality-badge {
-  background: rgba(255, 0, 0, 0.2);
+  background: rgba(255, 0, 0, 0.22);
   color: #ff4d4d;
   font-size: 11px;
   font-weight: 800;
   padding: 3px 8px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 0, 0, 0.4);
+  border: 1px solid rgba(255, 0, 0, 0.45);
   white-space: nowrap;
 }
 
 .top-video-title {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 700;
   color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
 .top-actions-group {
@@ -445,13 +384,13 @@ html, body {
 }
 
 .top-icon-btn:hover {
-  background: rgba(255, 0, 0, 0.35);
+  background: rgba(255, 0, 0, 0.4);
   border-color: #ff0000;
   transform: scale(1.08);
 }
 
 /* ==========================================================================
-   5. CENTER PLAY / PAUSE BUTTON & LOADERS
+   5. CENTER PLAY / PAUSE BUTTON & LOADER
    ========================================================================== */
 .center-play-btn {
   position: absolute;
@@ -461,8 +400,8 @@ html, body {
   width: 68px;
   height: 68px;
   border-radius: 50%;
-  background: rgba(10, 14, 23, 0.8);
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(6, 9, 14, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.35);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -474,8 +413,8 @@ html, body {
 }
 
 .center-play-btn:hover {
-  background: rgba(255, 0, 0, 0.85);
-  border-color: #ff0000;
+  background: var(--yt-red);
+  border-color: var(--yt-red);
   transform: translate(-50%, -50%) scale(1.12);
 }
 
@@ -488,7 +427,7 @@ html, body {
 .loader-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(10, 14, 23, 0.9);
+  background: rgba(6, 9, 14, 0.92);
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
@@ -524,7 +463,7 @@ html, body {
 }
 
 /* ==========================================================================
-   6. BOTTOM CONTROLS BAR (INSIDE PLAYER)
+   6. BOTTOM CONTROLS BAR (INSIDE PLAYER VIEWPORT)
    ========================================================================== */
 .player-overlay-bottom {
   position: absolute;
@@ -532,7 +471,7 @@ html, body {
   left: 0;
   right: 0;
   padding: 0 16px max(10px, env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(0deg, rgba(10, 14, 23, 0.95) 0%, rgba(10, 14, 23, 0.6) 65%, transparent 100%);
+  background: linear-gradient(0deg, rgba(6, 9, 14, 0.96) 0%, rgba(6, 9, 14, 0.6) 65%, transparent 100%);
   z-index: 20;
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
@@ -604,7 +543,7 @@ html, body {
   bottom: 22px;
   left: 0;
   transform: translateX(-50%);
-  background: rgba(10, 14, 23, 0.95);
+  background: rgba(6, 9, 14, 0.95);
   border: 1px solid var(--cinema-border);
   color: #fff;
   font-size: 11px;
@@ -641,12 +580,13 @@ html, body {
   justify-content: center;
   cursor: pointer;
   border-radius: 50%;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .ctrl-btn:hover {
   color: var(--yt-red);
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
+  transform: scale(1.06);
 }
 
 .volume-control-group {
@@ -661,7 +601,7 @@ html, body {
   accent-color: var(--yt-red);
   cursor: pointer;
   opacity: 0.85;
-  transition: opacity 0.15s ease, width 0.2s ease;
+  transition: opacity 0.15s ease;
 }
 
 .volume-slider:hover {
@@ -669,7 +609,7 @@ html, body {
 }
 
 .time-display {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: #e2e8f0;
   white-space: nowrap;
@@ -682,10 +622,10 @@ html, body {
   margin: 0 3px;
 }
 
-/* Right Pill Controls (Boost, Fit, Speed) */
+/* Right Controls (Boost, Fit, Settings, Fullscreen) */
 .ctrl-pill-btn {
   background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   color: #ffffff;
   font-size: 12px;
   font-weight: 700;
@@ -710,7 +650,7 @@ html, body {
   background: rgba(255, 0, 0, 0.25);
   color: #ff4d4d;
   border-color: #ff0000;
-  box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.35);
 }
 
 /* Hide controls on inactivity */
@@ -723,14 +663,158 @@ html, body {
 }
 
 /* ==========================================================================
-   7. GESTURES & HUDs
+   7. YOUTUBE-STYLE SETTINGS POPOVER MENU (INSIDE PLAYER)
+   ========================================================================== */
+.settings-popover {
+  position: absolute;
+  bottom: 64px;
+  right: 18px;
+  width: 280px;
+  background: rgba(17, 24, 39, 0.96);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.9);
+  z-index: 30;
+  overflow: hidden;
+  animation: popIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cinema-border);
+}
+
+.settings-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.settings-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--cinema-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.settings-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.settings-view, .settings-subview {
+  padding: 6px 0;
+}
+
+.settings-row-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s ease;
+}
+
+.settings-row-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.row-left, .row-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row-right {
+  color: var(--cinema-text-muted);
+  font-size: 12px;
+}
+
+.row-arrow {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.subview-back-btn {
+  width: 100%;
+  text-align: left;
+  padding: 8px 16px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--cinema-border);
+  color: #38bdf8;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.subview-back-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.options-list {
+  padding: 4px 0;
+}
+
+.option-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 16px;
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s ease;
+}
+
+.option-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.option-item.active-option {
+  color: #ff4d4d;
+  font-weight: 700;
+}
+
+.option-item .check {
+  color: #ff4d4d;
+  font-weight: 800;
+}
+
+/* ==========================================================================
+   8. GESTURES & HUDs
    ========================================================================== */
 .speed-overlay {
   position: absolute;
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(10, 14, 23, 0.92);
+  background: rgba(6, 9, 14, 0.94);
   border: 1.5px solid var(--yt-red);
   color: #fff;
   padding: 6px 16px;
@@ -747,7 +831,7 @@ html, body {
   transform: translateY(-50%);
   width: 36px;
   height: 130px;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   border-radius: 20px;
   display: flex;
   flex-direction: column;
@@ -803,7 +887,7 @@ html, body {
   bottom: 60px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(21, 29, 48, 0.95);
+  background: rgba(17, 24, 39, 0.95);
   border: 1px solid var(--cinema-border);
   color: #fff;
   padding: 8px 16px;
@@ -815,12 +899,12 @@ html, body {
 }
 
 /* ==========================================================================
-   8. CHANNEL LOCK GATE & ERROR OVERLAY
+   9. CHANNEL LOCK GATE & ERROR OVERLAY
    ========================================================================== */
 .channel-gate-overlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, rgba(15, 21, 35, 0.96) 0%, rgba(8, 12, 20, 0.98) 100%);
+  background: radial-gradient(circle at center, rgba(17, 24, 39, 0.96) 0%, rgba(6, 9, 14, 0.98) 100%);
   backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
@@ -830,7 +914,7 @@ html, body {
 }
 
 .channel-gate-card {
-  background: rgba(21, 29, 48, 0.94);
+  background: rgba(17, 24, 39, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 20px;
   padding: 28px 22px;
@@ -850,7 +934,6 @@ html, body {
   font-weight: 800;
   color: #ffffff;
   margin-bottom: 8px;
-  text-wrap: balance;
 }
 
 .gate-subtitle {
@@ -858,7 +941,6 @@ html, body {
   color: var(--cinema-text-muted);
   line-height: 1.5;
   margin-bottom: 20px;
-  text-wrap: pretty;
 }
 
 .gate-actions {
@@ -906,7 +988,7 @@ html, body {
 .error-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(10, 14, 23, 0.94);
+  background: rgba(6, 9, 14, 0.94);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -945,14 +1027,31 @@ html, body {
 .btn-secondary { background: #333; color: #fff; }
 
 /* ==========================================================================
-   9. VIDEO METADATA & FOOTER (Below Player)
+   10. VIDEO METADATA & FOOTER (Below Theater Player)
    ========================================================================== */
 .video-info-section {
-  margin-top: 16px;
+  max-width: 1240px;
+  margin: 18px auto 50px;
+  padding: 0 24px;
+}
+
+.info-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--cinema-border);
+}
+
+.info-title-group {
+  flex: 1;
+  min-width: 280px;
 }
 
 .video-main-title {
-  font-size: 20px;
+  font-size: 21px;
   font-weight: 800;
   color: #ffffff;
   line-height: 1.35;
@@ -964,28 +1063,91 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 14px;
+  flex-wrap: wrap;
 }
 
 .meta-badge-red {
-  background: rgba(255, 0, 0, 0.15);
+  background: rgba(255, 0, 0, 0.16);
   color: #ff4d4d;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
   padding: 3px 8px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 0, 0, 0.3);
+  border: 1px solid rgba(255, 0, 0, 0.35);
 }
 
 .meta-badge-size {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #38bdf8;
 }
 
+.meta-badge-zero-ads {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.info-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.action-btn-pill {
+  background: var(--cinema-surface);
+  border: 1px solid var(--cinema-border);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  min-height: var(--target-size);
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.action-btn-pill:hover {
+  background: var(--cinema-surface-hover);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-highlight {
+  background: rgba(255, 0, 0, 0.15);
+  border-color: rgba(255, 0, 0, 0.4);
+  color: #ff4d4d;
+}
+
+.btn-highlight:hover {
+  background: var(--yt-red);
+  color: #ffffff;
+  border-color: var(--yt-red);
+}
+
+.btn-telegram-pill {
+  background: rgba(0, 136, 204, 0.15);
+  border-color: rgba(0, 136, 204, 0.4);
+  color: #38bdf8;
+}
+
+.btn-telegram-pill:hover {
+  background: var(--tg-gradient);
+  color: #ffffff;
+}
+
 .video-creator-footer {
-  border-top: 1px solid var(--cinema-border);
-  padding-top: 12px;
+  padding-top: 14px;
   font-size: 13px;
   color: var(--cinema-text-muted);
   display: flex;
@@ -1009,22 +1171,35 @@ html, body {
 }
 
 /* ==========================================================================
-   10. MOBILE & DESKTOP RESPONSIVENESS
+   11. MOBILE & RESPONSIVE PERFECTION
    ========================================================================== */
 @media (max-width: 768px) {
   .app-navbar { padding: 0 14px; }
-  .player-view-container { padding: 10px 10px 40px; }
-  .video-main-title { font-size: 16px; }
-  .home-card { padding: 28px 18px; }
-  .home-title { font-size: 22px; }
+  .cinema-player-viewport {
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+  .video-info-section {
+    padding: 14px 14px 40px;
+    margin: 0;
+  }
+  .video-main-title { font-size: 16.5px; }
   .volume-slider { display: none; }
   .time-display { font-size: 11px; }
   .top-video-title { font-size: 12.5px; }
-  .ctrl-pill-btn { padding: 3px 7px; font-size: 11px; }
-}
-
-@media (max-width: 480px) {
-  .top-actions-group { gap: 4px; }
-  .controls-row { gap: 4px; }
-  #aspectRatioBtn { display: none; }
+  .ctrl-pill-btn { padding: 3px 8px; font-size: 11px; }
+  .settings-popover {
+    width: 250px;
+    right: 8px;
+    bottom: 58px;
+  }
+  .info-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .info-actions-row {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }

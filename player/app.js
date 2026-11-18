@@ -1,25 +1,24 @@
 // TeravidsPlay — Official Integrated Cinema Player Engine
-// Features: All Controls Inside Viewport, Web Audio 300% Boost,
-// YouTube Red Scrubber, 4X Ultra Turbo Long-Press, Auto-Channel Unlock from Telegram,
-// HLS + Direct + Edge Proxy Multi-Tier Decoder.
+// Features: Full-Width Theater Mode, In-Viewport YouTube Controls,
+// Interactive Settings Popover (Speed, Quality, Boost, Fit),
+// Web Audio 300% Boost, 4X Ultra Turbo Long-Press, Telegram Auto-Unlock,
+// Triple-Tier Stream Decoder with Cloudflare Edge Proxy Fallback.
 
 document.addEventListener('DOMContentLoaded', () => {
-  // 1. Telegram WebApp Integration & Channel Auto-Unlock
+  // 1. Telegram WebApp Integration & Auto-Unlock
   const tg = window.Telegram?.WebApp;
   if (tg) {
     tg.ready();
     tg.expand();
     try {
-      tg.setHeaderColor('#0a0e17');
-      tg.setBackgroundColor('#0a0e17');
+      tg.setHeaderColor('#06090e');
+      tg.setBackgroundColor('#06090e');
     } catch (e) {}
   }
 
   // 2. DOM Elements
   const homePage = document.getElementById('homePage');
   const playerView = document.getElementById('playerView');
-  const homeInputForm = document.getElementById('homeInputForm');
-  const homeUrlInput = document.getElementById('homeUrlInput');
 
   const playerContainer = document.getElementById('playerContainer');
   const videoElement = document.getElementById('player');
@@ -53,15 +52,34 @@ document.addEventListener('DOMContentLoaded', () => {
   const currentTimeElem = document.getElementById('currentTime');
   const durationTimeElem = document.getElementById('durationTime');
 
-  // Right Integrated Pill Controls
+  // Pill Controls
   const audioBoostBtn = document.getElementById('audioBoostBtn');
   const audioBoostLabel = document.getElementById('audioBoostLabel');
   const aspectRatioBtn = document.getElementById('aspectRatioBtn');
   const aspectRatioLabel = document.getElementById('aspectRatioLabel');
-  const speedBtn = document.getElementById('speedBtn');
-  const speedLabel = document.getElementById('speedLabel');
+  const settingsBtn = document.getElementById('settingsBtn');
   const fullscreenBtn = document.getElementById('fullscreenBtn');
   const fullscreenIcon = document.getElementById('fullscreenIcon');
+
+  // Settings Popover & Subviews
+  const settingsMenu = document.getElementById('settingsMenu');
+  const settingsTitle = document.getElementById('settingsTitle');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const settingsMainView = document.getElementById('settingsMainView');
+  const subviewSpeed = document.getElementById('subviewSpeed');
+  const subviewQuality = document.getElementById('subviewQuality');
+  const subviewBoost = document.getElementById('subviewBoost');
+  const subviewFit = document.getElementById('subviewFit');
+
+  const rowSpeed = document.getElementById('rowSpeed');
+  const rowQuality = document.getElementById('rowQuality');
+  const rowBoost = document.getElementById('rowBoost');
+  const rowFit = document.getElementById('rowFit');
+
+  const settingsCurrentSpeed = document.getElementById('settingsCurrentSpeed');
+  const settingsCurrentQuality = document.getElementById('settingsCurrentQuality');
+  const settingsCurrentBoost = document.getElementById('settingsCurrentBoost');
+  const settingsCurrentFit = document.getElementById('settingsCurrentFit');
 
   // Overlays & Gestures
   const speedOverlay = document.getElementById('speedOverlay');
@@ -78,7 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const resumeToast = document.getElementById('resumeToast');
   const resumeToastText = document.getElementById('resumeToastText');
   const channelGateOverlay = document.getElementById('channelGateOverlay');
-  const gateJoinBtn = document.getElementById('gateJoinBtn');
   const gateUnlockBtn = document.getElementById('gateUnlockBtn');
   const errorOverlay = document.getElementById('errorOverlay');
   const errorHeading = document.getElementById('errorHeading');
@@ -86,10 +103,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const retryBtn = document.getElementById('retryBtn');
   const externalDownloadBtn = document.getElementById('externalDownloadBtn');
 
-  // Metadata below video
+  // Below-player metadata & external actions
   const videoTitleElem = document.getElementById('videoTitle');
   const formatBadgeElem = document.getElementById('formatBadge');
   const fileSizeElem = document.getElementById('fileSize');
+  const btnDownloadExt = document.getElementById('btnDownloadExt');
+  const btnShareExt = document.getElementById('btnShareExt');
   const ambientCanvas = document.getElementById('ambientCanvas');
 
   // Helper Functions
@@ -205,33 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
     activateHomeView();
   }
 
-  // Paste Link on Home Page
-  if (homeInputForm && homeUrlInput) {
-    homeInputForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const val = homeUrlInput.value.trim();
-      if (!val) return;
-
-      let extractedId = '';
-      const m1 = val.match(/\/s\/([a-zA-Z0-9_-]+)/);
-      if (m1) extractedId = m1[1];
-      else if (val.includes('surl=')) extractedId = val.split('surl=')[1].split('&')[0];
-      else if (/^[a-zA-Z0-9_-]{15,35}$/.test(val)) extractedId = val;
-
-      activatePlayerView();
-
-      if (extractedId) {
-        vId = extractedId;
-        try { history.pushState(null, '', `/?v=${encodeURIComponent(extractedId)}`); } catch (err) {}
-        resolveAndPlay(extractedId);
-      } else {
-        streamUrl = val;
-        try { history.pushState(null, '', `/?stream=${encodeURIComponent(val)}`); } catch (err) {}
-        loadStream(val);
-      }
-    });
-  }
-
   // 4. Auto-Hiding Controls Engine
   let controlsTimeout = null;
 
@@ -240,16 +232,18 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(controlsTimeout);
     if (!videoElement.paused) {
       controlsTimeout = setTimeout(() => {
+        // Don't auto-hide if settings popover is open
+        if (settingsMenu && settingsMenu.style.display !== 'none') return;
         playerContainer.classList.add('controls-hidden');
-      }, 3200);
+      }, 3000);
     }
   }
 
   playerContainer.addEventListener('mousemove', showControls);
   playerContainer.addEventListener('touchstart', showControls, { passive: true });
   playerContainer.addEventListener('click', (e) => {
-    // If click was on a button or scrubber, don't toggle play/pause
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container')) return;
+    // If click was on a button, input, or popover, don't toggle play/pause
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover')) return;
     togglePlay();
   });
 
@@ -399,7 +393,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 9. Web Audio API 300% Sound Booster (Integrated Inside Player)
+  // 9. Web Audio API 300% Sound Booster (Integrated)
   let audioCtx = null;
   let gainNode = null;
   let audioBoostLevel = 1.0;
@@ -427,9 +421,24 @@ document.addEventListener('DOMContentLoaded', () => {
     initAudioBooster();
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     if (gainNode) gainNode.gain.value = audioBoostLevel;
-    if (audioBoostLabel) audioBoostLabel.textContent = `Boost: ${Math.round(audioBoostLevel * 100)}%`;
+    const label = `${Math.round(audioBoostLevel * 100)}%`;
+    if (audioBoostLabel) audioBoostLabel.textContent = `Boost: ${label}`;
+    if (settingsCurrentBoost) settingsCurrentBoost.textContent = label;
     if (audioBoostBtn) audioBoostBtn.classList.toggle('active-pill', audioBoostLevel > 1.0);
-    showToast(`🔊 Audio Boost: ${Math.round(audioBoostLevel * 100)}%`);
+
+    // Update active check in boost subview
+    document.querySelectorAll('#subviewBoost .option-item').forEach(el => {
+      const b = parseFloat(el.getAttribute('data-boost'));
+      if (b === audioBoostLevel) {
+        el.classList.add('active-option');
+        el.innerHTML = `${el.textContent.replace(' ✓', '')} <span class="check">✓</span>`;
+      } else {
+        el.classList.remove('active-option');
+        el.innerHTML = el.textContent.replace(' ✓', '');
+      }
+    });
+
+    showToast(`🔊 Audio Boost: ${label}`);
   }
 
   if (audioBoostBtn) {
@@ -444,30 +453,171 @@ document.addEventListener('DOMContentLoaded', () => {
   const aspectLabels = ['Fit', 'Fill', 'Stretch'];
   let aspectIdx = 0;
 
+  function setAspectMode(mode, label) {
+    videoElement.style.objectFit = mode;
+    if (aspectRatioLabel) aspectRatioLabel.textContent = label;
+    if (settingsCurrentFit) settingsCurrentFit.textContent = label;
+
+    document.querySelectorAll('#subviewFit .option-item').forEach(el => {
+      if (el.getAttribute('data-fit') === mode) {
+        el.classList.add('active-option');
+        el.innerHTML = `${el.textContent.replace(' ✓', '')} <span class="check">✓</span>`;
+      } else {
+        el.classList.remove('active-option');
+        el.innerHTML = el.textContent.replace(' ✓', '');
+      }
+    });
+    showToast(`Aspect Ratio: ${label}`);
+  }
+
   if (aspectRatioBtn && aspectRatioLabel) {
     aspectRatioBtn.addEventListener('click', () => {
       aspectIdx = (aspectIdx + 1) % aspectModes.length;
-      videoElement.style.objectFit = aspectModes[aspectIdx];
-      aspectRatioLabel.textContent = aspectLabels[aspectIdx];
-      showToast(`Aspect Ratio: ${aspectLabels[aspectIdx]}`);
+      setAspectMode(aspectModes[aspectIdx], aspectLabels[aspectIdx]);
     });
   }
 
-  // 11. Playback Speed Selector (0.75x -> 1.0x -> 1.25x -> 1.5x -> 2.0x -> 4.0x)
-  const speedOptions = [0.75, 1.0, 1.25, 1.5, 2.0, 4.0];
-  let speedIdx = 1;
+  // 11. Playback Speed Selector (0.5x -> 4.0x)
+  function setSpeed(speedVal) {
+    const val = parseFloat(speedVal);
+    videoElement.playbackRate = val;
+    const label = val === 1.0 ? '1.0x' : `${val}x`;
+    if (settingsCurrentSpeed) settingsCurrentSpeed.textContent = label;
 
-  if (speedBtn && speedLabel) {
-    speedBtn.addEventListener('click', () => {
-      speedIdx = (speedIdx + 1) % speedOptions.length;
-      const spd = speedOptions[speedIdx];
-      videoElement.playbackRate = spd;
-      speedLabel.textContent = `${spd}x`;
-      showToast(`⚡ Speed: ${spd}x`);
+    document.querySelectorAll('#subviewSpeed .option-item').forEach(el => {
+      const spd = parseFloat(el.getAttribute('data-speed'));
+      if (spd === val) {
+        el.classList.add('active-option');
+        el.innerHTML = `${el.textContent.replace(' ✓', '')} <span class="check">✓</span>`;
+      } else {
+        el.classList.remove('active-option');
+        el.innerHTML = el.textContent.replace(' ✓', '');
+      }
+    });
+    showToast(`⚡ Speed: ${label}`);
+  }
+
+  // 12. Settings Popover Submenu Navigation
+  function showSettingsMain() {
+    settingsTitle.textContent = 'Playback Settings';
+    settingsMainView.style.display = 'block';
+    subviewSpeed.style.display = 'none';
+    subviewQuality.style.display = 'none';
+    subviewBoost.style.display = 'none';
+    subviewFit.style.display = 'none';
+  }
+
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = settingsMenu.style.display === 'block';
+      if (isVisible) {
+        settingsMenu.style.display = 'none';
+      } else {
+        showSettingsMain();
+        settingsMenu.style.display = 'block';
+        showControls();
+      }
     });
   }
 
-  // 12. Fullscreen Toggle
+  if (closeSettingsBtn) {
+    closeSettingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      settingsMenu.style.display = 'none';
+    });
+  }
+
+  // Row Clicks
+  if (rowSpeed) {
+    rowSpeed.addEventListener('click', () => {
+      settingsTitle.textContent = 'Playback Speed';
+      settingsMainView.style.display = 'none';
+      subviewSpeed.style.display = 'block';
+    });
+  }
+
+  if (rowQuality) {
+    rowQuality.addEventListener('click', () => {
+      settingsTitle.textContent = 'Resolution & Quality';
+      settingsMainView.style.display = 'none';
+      subviewQuality.style.display = 'block';
+    });
+  }
+
+  if (rowBoost) {
+    rowBoost.addEventListener('click', () => {
+      settingsTitle.textContent = 'Audio Boost (Web Audio)';
+      settingsMainView.style.display = 'none';
+      subviewBoost.style.display = 'block';
+    });
+  }
+
+  if (rowFit) {
+    rowFit.addEventListener('click', () => {
+      settingsTitle.textContent = 'Screen Fit Mode';
+      settingsMainView.style.display = 'none';
+      subviewFit.style.display = 'block';
+    });
+  }
+
+  // Back Buttons
+  document.querySelectorAll('.subview-back-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      showSettingsMain();
+    });
+  });
+
+  // Speed Option Select
+  document.querySelectorAll('#subviewSpeed .option-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const spd = item.getAttribute('data-speed');
+      setSpeed(spd);
+      showSettingsMain();
+    });
+  });
+
+  // Quality Option Select
+  document.querySelectorAll('#subviewQuality .option-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const q = item.getAttribute('data-quality');
+      if (settingsCurrentQuality) settingsCurrentQuality.textContent = item.textContent.replace(' ✓', '');
+      document.querySelectorAll('#subviewQuality .option-item').forEach(el => {
+        el.classList.toggle('active-option', el === item);
+        el.innerHTML = el === item ? `${el.textContent.replace(' ✓', '')} <span class="check">✓</span>` : el.textContent.replace(' ✓', '');
+      });
+      showToast(`Quality: ${item.textContent.replace(' ✓', '')}`);
+      showSettingsMain();
+    });
+  });
+
+  // Boost Option Select
+  document.querySelectorAll('#subviewBoost .option-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const b = parseFloat(item.getAttribute('data-boost'));
+      setBoostLevel(b);
+      showSettingsMain();
+    });
+  });
+
+  // Fit Option Select
+  document.querySelectorAll('#subviewFit .option-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const f = item.getAttribute('data-fit');
+      const label = f === 'contain' ? 'Fit (16:9)' : (f === 'cover' ? 'Fill (Crop)' : 'Stretch');
+      setAspectMode(f, label);
+      showSettingsMain();
+    });
+  });
+
+  // Close Settings on Click Outside
+  window.addEventListener('click', (e) => {
+    if (settingsMenu && settingsMenu.style.display === 'block' && !e.target.closest('.settings-popover') && !e.target.closest('#settingsBtn')) {
+      settingsMenu.style.display = 'none';
+    }
+  });
+
+  // 13. Fullscreen Toggle
   function toggleFullscreen() {
     if (!document.fullscreenElement) {
       if (playerContainer.requestFullscreen) playerContainer.requestFullscreen();
@@ -481,14 +631,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
 
-  // 13. Ultra Long-Press: 2X Speed & 4X Turbo Speed
+  // 14. Ultra Long-Press: 2X Speed & 4X Turbo Speed
   let pressTimer2x = null;
   let pressTimer4x = null;
   let isFastForwarding = false;
   let originalSpeed = 1.0;
 
   function startLongPress(e) {
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container')) return;
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover')) return;
 
     // Stage 1: Hold 350ms -> 2X Speed
     pressTimer2x = setTimeout(() => {
@@ -529,12 +679,12 @@ document.addEventListener('DOMContentLoaded', () => {
   playerContainer.addEventListener('touchstart', startLongPress, { passive: true });
   window.addEventListener('touchend', stopLongPress);
 
-  // 14. Double-Tap Seek (Mobile & Touch)
+  // 15. Double-Tap Seek (Mobile & Touch)
   let lastTapTime = 0;
   let tapTimeout = null;
 
   playerContainer.addEventListener('click', (e) => {
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container')) return;
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover')) return;
     const now = Date.now();
     const rect = playerContainer.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
@@ -556,7 +706,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 15. Swipe Gestures for Brightness & Volume
+  // 16. Swipe Gestures for Brightness & Volume
   let touchStartX = 0;
   let touchStartY = 0;
   let isSwiping = false;
@@ -613,7 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 16. Keyboard Shortcuts
+  // 17. Keyboard Shortcuts
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     switch (e.key) {
@@ -662,7 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 17. Ambient Glow Canvas
+  // 18. Ambient Glow Canvas
   let ambientCtx = null;
   let ambientRaf = null;
 
@@ -685,7 +835,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ambientRaf = null;
   });
 
-  // 18. Auto-Resume from Last Position
+  // 19. Auto-Resume from Last Position
   const storageKey = `teravids_pos_${vId || streamUrl.slice(-25) || 'default'}`;
 
   function checkResume() {
@@ -703,7 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 19. Multi-Tier Stream Loader (Direct -> No-CORS -> Edge Proxy -> HLS)
+  // 20. Multi-Tier Stream Loader (Direct -> No-CORS -> Edge Proxy -> HLS)
   let hlsInstance = null;
   let retryCount = 0;
 
@@ -720,6 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
     errorOverlay.style.display = 'none';
 
     if (topDownloadBtn) topDownloadBtn.href = url;
+    if (btnDownloadExt) btnDownloadExt.href = url;
     if (externalDownloadBtn) externalDownloadBtn.href = url;
 
     const isM3U8 = url.includes('.m3u8');
@@ -782,7 +933,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.error('HTML5 video error:', e);
     const currentSrc = videoElement.currentSrc || videoElement.src;
 
-    // Retry 1: If direct link failed and hasn't been proxied yet, route via Cloudflare Edge Worker
+    // Retry via Cloudflare Edge Streaming Proxy
     if (currentSrc && !currentSrc.includes('workers.dev') && !currentSrc.startsWith('blob:') && !currentSrc.startsWith('data:') && retryCount === 0) {
       retryCount++;
       const proxiedUrl = `https://teravidsplay.proxyking.workers.dev/?url=${encodeURIComponent(currentSrc)}`;
@@ -806,7 +957,7 @@ document.addEventListener('DOMContentLoaded', () => {
     errorOverlay.style.display = 'flex';
   }
 
-  // 20. Video Resolver for TeraBox Short IDs (?v=...)
+  // 21. Video Resolver for TeraBox Short IDs (?v=...)
   async function resolveAndPlay(surl) {
     loader.classList.remove('hidden');
     loaderText.textContent = 'Resolving video details...';
@@ -854,6 +1005,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (thumb) videoElement.poster = thumb;
 
         if (topDownloadBtn) topDownloadBtn.href = vid.stream_url;
+        if (btnDownloadExt) btnDownloadExt.href = vid.stream_url;
 
         loadStream(vid.stream_url, thumb);
         return;
@@ -864,22 +1016,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 21. Top Bar Share & Download Listeners
-  if (topShareBtn) {
-    topShareBtn.addEventListener('click', async () => {
-      const shareUrl = vId ? `${window.location.origin}/?v=${vId}` : window.location.href;
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: topVideoTitle.textContent, url: shareUrl });
-          return;
-        } catch (err) {}
-      }
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(shareUrl);
-        showToast('🔗 Video link copied!');
-      }
-    });
+  // 22. Share Listeners
+  async function triggerShare() {
+    const shareUrl = vId ? `${window.location.origin}/?v=${vId}` : window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: topVideoTitle.textContent || cleanTitle, url: shareUrl });
+        return;
+      } catch (err) {}
+    }
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast('🔗 Video link copied!');
+    }
   }
+
+  if (topShareBtn) topShareBtn.addEventListener('click', triggerShare);
+  if (btnShareExt) btnShareExt.addEventListener('click', triggerShare);
 
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
@@ -889,7 +1042,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 22. Initiate Playback
+  // 23. Initiate Playback
   if (vId) {
     resolveAndPlay(vId);
   } else if (streamUrl) {

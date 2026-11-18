@@ -288,7 +288,7 @@ def handle_private_post(message: types.Message):
     masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"
     logger.info(f"Processing verified TeraBox link in DM: surl={masked_token}")
 
-    status_msg = bot.reply_to(message, "⚡ <b>Resolving video stream...</b>\n<i>Please wait 1-2 seconds.</i>")
+    # Silent direct resolution: no waiting message in channel or chat
     title_hint = extract_title_hint_from_message(message, raw_url)
 
     data = extractor.get_video_stream(raw_url)
@@ -311,10 +311,9 @@ def handle_private_post(message: types.Message):
         stream_url = ""
         thumb_url = None
     else:
-        bot.edit_message_text(
-            f"❌ <b>Resolution Failed:</b>\n{data.get('message', 'Link expired or unreachable.')}",
-            chat_id=message.chat.id,
-            message_id=status_msg.message_id,
+        bot.reply_to(
+            message,
+            f"❌ <b>Resolution Failed:</b>\n{data.get('message', 'Link expired or unreachable.')}"
         )
         return
 
@@ -360,11 +359,7 @@ def handle_private_post(message: types.Message):
     else:
         status_text = "✅ <b>Stream Ready!</b>"
 
-    bot.edit_message_text(
-        status_text,
-        chat_id=message.chat.id,
-        message_id=status_msg.message_id,
-    )
+
 
     # Deliver card in DM so user can test and watch right here
     publish_card(
