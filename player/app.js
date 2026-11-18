@@ -563,6 +563,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     videoElement.addEventListener('error', (e) => {
       console.error('HTML5 video error:', e);
+      // Automatic Edge Proxy Fallback: If direct CDN stream hit CORS or Byte-Range blocking,
+      // route smoothly through the Cloudflare Streaming Proxy
+      const currentSrc = videoElement.currentSrc || videoElement.src;
+      if (currentSrc && !currentSrc.includes('workers.dev') && !currentSrc.startsWith('blob:') && !currentSrc.startsWith('data:')) {
+        const proxiedUrl = `https://teravidsplay.proxyking.workers.dev/?url=${encodeURIComponent(currentSrc)}`;
+        console.info('[TeravidsPlay] Direct stream blocked. Activating Cloudflare Edge Streaming Proxy fallback...');
+        loaderText.textContent = 'Activating edge proxy...';
+        loader.classList.remove('hidden');
+        videoElement.src = proxiedUrl;
+        videoElement.load();
+        videoElement.play().catch(() => {});
+        return;
+      }
       showError('Playback Interrupted', 'Unable to decode video stream. The link may have expired or is blocked.');
     });
 

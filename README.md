@@ -42,6 +42,17 @@ Deploy [`bot/`](bot/) to [Render.com](https://render.com) (Free Web Service):
 | `TARGET_CHANNEL_ID` | Telegram Channel username or numeric ID (`@teravidsplayer`) |
 | `PLAYER_URL` | Deployed Web Player URL (`https://teravidsplayer.vercel.app`) |
 | `WORKER_URL` | Cloudflare Worker URL (`https://teravidsplay.proxyking.workers.dev`) |
+| `ADMIN_SECRET` | *(Optional)* Secret token to unlock diagnostic endpoints (`/diag`) |
+| `WEBHOOK_SECRET` | *(Optional)* Secret token for Telegram webhook validation |
+
+---
+
+### 🔒 Security & Deployment Architecture
+
+* **SSRF Guard & Domain Allowlist:** All outbound requests strictly validate hostnames against authorized TeraBox CDN domains, rejecting private IPs and unauthorized proxies.
+* **Open Proxy Protection:** Cloudflare Worker streaming proxy (`/?url=...`) only proxies whitelisted TeraBox CDN media and verifies destination domains on every redirect.
+* **Protected Diagnostics:** Admin diagnostics (`/diag`) are disabled by default and require `ADMIN_SECRET` token authentication.
+* **Mutually Exclusive Bot Modes:** Choose between **Mode A (Render Polling — Default)** or **Mode B (Serverless Cloudflare Webhook)** without race conditions.
 
 ---
 

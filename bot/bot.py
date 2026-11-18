@@ -152,7 +152,9 @@ def handle_channel_post(message: types.Message):
     if not raw_url or not is_terabox_url(raw_url):
         return
 
-    logger.info(f"Processing TeraBox link in channel: {raw_url}")
+    surl_preview = extractor.parse_surl(raw_url) or ""
+    masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"
+    logger.info(f"Processing verified TeraBox link in channel: surl={masked_token}")
     title_hint = extract_title_hint_from_message(message, raw_url)
 
     data = extractor.get_video_stream(raw_url)
@@ -245,6 +247,10 @@ def handle_private_post(message: types.Message):
     if not raw_url or not is_terabox_url(raw_url):
         return
 
+    surl_preview = extractor.parse_surl(raw_url) or ""
+    masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"
+    logger.info(f"Processing verified TeraBox link in DM: surl={masked_token}")
+
     status_msg = bot.reply_to(message, "⚡ <b>Resolving video stream...</b>\n<i>Please wait 1-2 seconds.</i>")
     title_hint = extract_title_hint_from_message(message, raw_url)
 
@@ -335,14 +341,48 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
+    """
+    Production-grade cloud health check server.
+    Secured against SSRF and unauthorized public execution.
+    """
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+
+        # 1. Protected Admin Diagnostic Endpoint
         if parsed.path in ["/diag", "/resolve", "/test"]:
-            import json, traceback
+            admin_secret = os.getenv("ADMIN_SECRET", "").strip()
+            # If ADMIN_SECRET is not configured, diagnostic endpoints are completely disabled (404)
+            if not admin_secret:
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"Diagnostic endpoint disabled. Set ADMIN_SECRET to enable."}')
+                return
+
             query = urllib.parse.parse_qs(parsed.query)
-            target = query.get("url", ["https://1024terabox.com/s/18XBuJRPYrMNmrqzYZNqLbA"])[0]
+            token = query.get("token", [""])[0] or query.get("key", [""])[0]
+            auth_header = self.headers.get("Authorization", "")
+            bearer_token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
+
+            if token != admin_secret and bearer_token != admin_secret:
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"Unauthorized: Valid ADMIN_SECRET token required."}')
+                return
+
+            # Strict SSRF URL validation
+            raw_target = query.get("url", ["https://1024terabox.com/s/18XBuJRPYrMNmrqzYZNqLbA"])[0]
+            if not is_terabox_url(raw_target):
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":"Invalid target: Domain must belong to authorized TeraBox services."}')
+                return
+
+            import json, traceback
             diag = {
-                "target_url": target,
+                "status": "authenticated",
                 "worker_url": extractor.worker_url,
                 "step1_worker_direct": None,
                 "step2_extractor": None,
@@ -350,30 +390,29 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
             # 1. Direct Edge Worker Test
             try:
-                surl_clean = extractor.parse_surl(target) or target
+                surl_clean = extractor.parse_surl(raw_target) or raw_target
                 w_endpoint = f"{extractor.worker_url}/api/resolve?surl={urllib.parse.quote(surl_clean)}"
-                r = requests.get(w_endpoint, timeout=12)
+                r = requests.get(w_endpoint, timeout=8)
                 diag["step1_worker_direct"] = {
-                    "endpoint": w_endpoint,
                     "status_code": r.status_code,
-                    "body": r.text[:350]
+                    "body": r.text[:250]
                 }
             except Exception as e:
-                diag["step1_worker_direct"] = {"error": str(e), "trace": traceback.format_exc()}
+                diag["step1_worker_direct"] = {"error": str(e)}
 
             # 2. Full Extractor Test
             try:
-                diag["step2_extractor"] = extractor.get_video_stream(target)
+                diag["step2_extractor"] = extractor.get_video_stream(raw_target)
             except Exception as e:
-                diag["step2_extractor"] = {"error": str(e), "trace": traceback.format_exc()}
+                diag["step2_extractor"] = {"error": str(e)}
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(diag, indent=2).encode("utf-8"))
             return
 
+        # 2. Public Health Check Endpoint (Only used by Render/Koyeb uptime probes)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()

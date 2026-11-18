@@ -11,12 +11,14 @@ import os
 import re
 import logging
 import urllib.parse
+import ipaddress
 from typing import Dict, Any, Optional
 import requests
 
 logger = logging.getLogger("TeravidsPlayBot")
 
-TERABOX_DOMAINS = [
+# Strictly allowed TeraBox domain suffixes (Strict Hostname Allowlist)
+ALLOWED_TERABOX_HOSTS = {
     "terabox.com",
     "terabox.app",
     "teraboxapp.com",
@@ -29,7 +31,17 @@ TERABOX_DOMAINS = [
     "teraboxlink.com",
     "tibibox.com",
     "momerybox.com",
-]
+    "terasharelink.com",
+}
+
+# Strictly allowed public URL shorteners
+ALLOWED_SHORTENERS = {
+    "bit.ly",
+    "tinyurl.com",
+    "t.co",
+    "cutt.ly",
+    "dub.sh",
+}
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -38,12 +50,50 @@ DEFAULT_HEADERS = {
 }
 
 
+def is_safe_hostname(host: str) -> bool:
+    """
+    SSRF Protection: Strictly validates that the host is NOT a private/loopback/cloud metadata IP,
+    and matches the explicit allowlist of TeraBox domains or trusted shorteners.
+    """
+    if not host:
+        return False
+    host = host.lower().strip()
+
+    # 1. Block private/internal/cloud metadata IP addresses (e.g. 127.0.0.1, 169.254.169.254, 10.x)
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            return False
+        # Disallow raw public IPs as well (TeraBox services use valid DNS hostnames)
+        return False
+    except ValueError:
+        pass
+
+    # 2. Strict suffix check against allowed TeraBox domains
+    for allowed in ALLOWED_TERABOX_HOSTS:
+        if host == allowed or host.endswith("." + allowed):
+            return True
+
+    # 3. Check allowed URL shorteners
+    for shortener in ALLOWED_SHORTENERS:
+        if host == shortener or host.endswith("." + shortener):
+            return True
+
+    return False
+
+
 def is_terabox_url(text: str) -> bool:
-    """Checks if text contains any recognized TeraBox domain."""
+    """Strictly checks if URL hostname belongs to recognized TeraBox domain or shortener."""
     if not text:
         return False
-    lower_text = text.lower()
-    return any(domain in lower_text for domain in TERABOX_DOMAINS)
+    try:
+        parsed = urllib.parse.urlparse(text)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower()
+        return is_safe_hostname(host)
+    except Exception:
+        return False
 
 
 def extract_url(text: str) -> Optional[str]:
@@ -53,8 +103,8 @@ def extract_url(text: str) -> Optional[str]:
     match = re.search(r"https?://[^\s<>\"']+", text)
     if not match:
         return None
-    url = match.group(0)
-    return url.rstrip(").,;:!?'\"")
+    url = match.group(0).rstrip(").,;:!?'\"")
+    return url if is_terabox_url(url) else None
 
 
 def format_bytes(size_bytes: int) -> str:
@@ -300,21 +350,37 @@ class TeraBoxExtractor:
     def get_video_stream(self, share_url: str) -> Dict[str, Any]:
         """
         Main orchestrator: Resolves any TeraBox share URL into a streamable direct link.
+        Guarded with strict SSRF protection and domain allowlisting.
         """
         self.last_diagnostics = []
-        logger.info(f"[TeraBoxExtractor] Starting extraction for URL: {share_url}")
 
-        # Step 1: Normalize & resolve shortened URLs (e.g. bit.ly, t.co) ONLY if not already a TeraBox link
-        clean_url = share_url
+        # Security Check: Reject any URL not in the strict TeraBox/Shortener allowlist
         if not is_terabox_url(share_url):
+            logger.warning("[TeraBoxExtractor] SSRF Guard: Rejected unverified domain request.")
+            return {
+                "success": False,
+                "error": "Access Denied",
+                "message": "Only valid, public TeraBox links are supported.",
+                "diagnostics": ["URL failed strict hostname allowlist"],
+            }
+
+        # Step 1: Normalize & resolve shortened URLs (e.g. bit.ly, t.co) with non-following redirect check
+        clean_url = share_url
+        parsed = urllib.parse.urlparse(share_url)
+        host = (parsed.hostname or "").lower()
+        if host in ALLOWED_SHORTENERS:
             try:
-                head_resp = requests.head(share_url, headers=DEFAULT_HEADERS, allow_redirects=True, timeout=4)
-                clean_url = head_resp.url
+                # Safe single-hop redirect check (no auto-follow to prevent SSRF loops)
+                head_resp = requests.head(share_url, headers=DEFAULT_HEADERS, allow_redirects=False, timeout=3)
+                loc = head_resp.headers.get("Location")
+                if loc and is_safe_hostname(urllib.parse.urlparse(loc).hostname or ""):
+                    clean_url = loc
             except Exception as e:
-                logger.warning(f"[TeraBoxExtractor] Redirection check notice: {e}")
+                logger.warning(f"[TeraBoxExtractor] Shortener resolution notice: {e}")
 
         surl = self.parse_surl(clean_url) or self.parse_surl(share_url)
-        logger.info(f"[TeraBoxExtractor] Extracted surl token: {surl}")
+        surl_masked = f"{surl[:3]}***{surl[-3:]}" if surl and len(surl) > 6 else "***"
+        logger.info(f"[TeraBoxExtractor] Processing safe surl token: {surl_masked}")
 
         # Build candidate URL list for maximum compatibility across all 12 TeraBox domains
         candidates = []

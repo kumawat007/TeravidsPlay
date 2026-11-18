@@ -11,17 +11,35 @@
 
 const DEFAULT_PLAYER_URL = "https://teravidsplayer.vercel.app";
 
-const TERABOX_DOMAINS = [
+// Strictly allowed TeraBox domains & CDN hosts (SSRF & Open-Proxy Prevention)
+const ALLOWED_TERABOX_HOSTS = [
   "terabox.com", "terabox.app", "teraboxapp.com",
   "1024tera.com", "1024terabox.com", "4funbox.com",
   "mirrobox.com", "nephobox.com", "freeterabox.com",
-  "teraboxlink.com", "tibibox.com", "momerybox.com"
+  "teraboxlink.com", "tibibox.com", "momerybox.com",
+  "terasharelink.com", "baidupcs.com", "tribox.com"
 ];
 
+function isAllowedProxyUrl(urlString) {
+  if (!urlString) return false;
+  try {
+    const u = new URL(urlString);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    const hostname = u.hostname.toLowerCase();
+    
+    // Disallow IP addresses & localhost / internal metadata to prevent SSRF
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname === "localhost" || hostname.includes("[")) {
+      return false;
+    }
+    
+    return ALLOWED_TERABOX_HOSTS.some(allowed => hostname === allowed || hostname.endsWith("." + allowed));
+  } catch (e) {
+    return false;
+  }
+}
+
 function isTeraBoxUrl(text) {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  return TERABOX_DOMAINS.some(d => lower.includes(d));
+  return isAllowedProxyUrl(text);
 }
 
 function extractFirstUrl(text) {
@@ -164,6 +182,28 @@ export default {
     // 3. 24/7 Serverless Telegram Bot Webhook
     if (url.pathname === "/webhook" && request.method === "POST") {
       try {
+        // Security Check: Verify Telegram Secret Token if WEBHOOK_SECRET is set
+        const webhookSecret = env.WEBHOOK_SECRET;
+        if (webhookSecret) {
+          const secretHeader = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
+          if (secretHeader !== webhookSecret) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+        }
+
+        // Deployment Conflict Guard: Only process updates if Worker Bot is explicitly active
+        // Prevents 409 conflict when Render polling bot is the primary runner
+        const isWorkerBotActive = env.ENABLE_WORKER_BOT === "true" || !!webhookSecret;
+        if (!isWorkerBotActive) {
+          return new Response(JSON.stringify({
+            status: "inactive",
+            message: "Worker webhook is inactive. Polling mode is running on Render. Set ENABLE_WORKER_BOT=true to enable."
+          }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
         const update = await request.json();
         const msg = update.message || update.channel_post || update.edited_message || update.edited_channel_post;
 
@@ -367,6 +407,14 @@ export default {
       );
     }
 
+    // SSRF & Open-Proxy Guard: Strictly restrict proxying to verified TeraBox CDN domains
+    if (!isAllowedProxyUrl(targetUrl)) {
+      return new Response(
+        JSON.stringify({ error: "Access Denied: Requested domain is not permitted by proxy allowlist." }),
+        { status: 403, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+      );
+    }
+
     try {
       const upstreamHeaders = new Headers();
       const range = request.headers.get("Range");
@@ -396,7 +444,17 @@ export default {
         if ([301, 302, 303, 307, 308].includes(upstreamResponse.status)) {
           const location = upstreamResponse.headers.get("Location");
           if (!location) break;
-          currentUrl = new URL(location, currentUrl).toString();
+          const nextUrl = new URL(location, currentUrl).toString();
+
+          // Security Guard: Verify destination domain on every redirect hop
+          if (!isAllowedProxyUrl(nextUrl)) {
+            return new Response(
+              JSON.stringify({ error: "Access Denied: Redirected domain is not permitted." }),
+              { status: 403, headers: { "Content-Type": "application/json" } }
+            );
+          }
+
+          currentUrl = nextUrl;
           redirectCount++;
           continue;
         }
