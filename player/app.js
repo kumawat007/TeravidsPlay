@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
   const vId = urlParams.get('v') || urlParams.get('s') || '';
   let rawStream = urlParams.get('stream') || '';
-  const rawTitle = urlParams.get('title') || 'TeravidsPlay Video';
+  const rawTitle = urlParams.get('title') || '';
   const rawSize = urlParams.get('size') || '';
 
   if (rawStream.startsWith('b64:')) {
@@ -108,9 +108,66 @@ document.addEventListener('DOMContentLoaded', () => {
   const cleanTitle = safeDecode(rawTitle);
   const cleanSize = safeDecode(rawSize);
 
-  videoTitleElem.textContent = cleanTitle;
-  document.title = `${cleanTitle} — TeravidsPlay`;
-  if (cleanSize) fileSizeElem.textContent = cleanSize;
+  if (cleanTitle) {
+    videoTitleElem.textContent = cleanTitle;
+    document.title = `${cleanTitle} — TeravidsPlay`;
+  } else if (vId || streamUrl) {
+    videoTitleElem.textContent = 'Playing Stream...';
+    document.title = 'TeravidsPlay — Streaming';
+  } else {
+    videoTitleElem.textContent = 'Ready to Stream';
+    document.title = 'TeravidsPlay — Ad-Free Cinema Cloud Video Player';
+  }
+
+  if (cleanSize) {
+    fileSizeElem.textContent = cleanSize;
+    fileSizeElem.style.display = 'inline-flex';
+  } else {
+    fileSizeElem.style.display = 'none';
+  }
+
+  // Welcome portal elements
+  const welcomeOverlay = document.getElementById('welcomeOverlay');
+  const portalForm = document.getElementById('portalForm');
+  const portalUrlInput = document.getElementById('portalUrlInput');
+
+  function showWelcomePortal() {
+    loader.classList.add('hidden');
+    errorOverlay.style.display = 'none';
+    if (welcomeOverlay) welcomeOverlay.style.display = 'flex';
+  }
+
+  function hideWelcomePortal() {
+    if (welcomeOverlay) welcomeOverlay.style.display = 'none';
+  }
+
+  if (portalForm && portalUrlInput) {
+    portalForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const val = portalUrlInput.value.trim();
+      if (!val) return;
+
+      let token = '';
+      const m1 = val.match(/\/s\/([a-zA-Z0-9_-]+)/);
+      if (m1) {
+        token = m1[1];
+      } else if (val.includes('surl=')) {
+        token = val.split('surl=')[1].split('&')[0];
+      } else if (/^[a-zA-Z0-9_-]{15,35}$/.test(val)) {
+        token = val;
+      }
+
+      if (token) {
+        hideWelcomePortal();
+        try { history.replaceState(null, '', `/?v=${encodeURIComponent(token)}`); } catch (err) {}
+        resolveAndPlay(token);
+      } else {
+        hideWelcomePortal();
+        try { history.replaceState(null, '', `/?stream=${encodeURIComponent(val)}`); } catch (err) {}
+        loadStream(val);
+      }
+    });
+  }
 
   let plyrInstance = null;
   let hlsInstance = null;
@@ -594,6 +651,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    hideWelcomePortal();
+
     if (poster) {
       videoElement.poster = poster;
     }
@@ -612,12 +671,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     loader.classList.remove('hidden');
-    loaderText.textContent = 'Connecting stream...';
+    loaderText.textContent = 'Connecting high-speed stream...';
     errorOverlay.style.display = 'none';
     externalDownloadBtn.href = url;
 
     const isM3U8 = url.includes('.m3u8');
-    formatBadgeElem.textContent = isM3U8 ? 'HLS ADAPTIVE' : 'HD DIRECT';
+    formatBadgeElem.textContent = isM3U8 ? 'HLS ADAPTIVE' : 'FULL HD';
+    formatBadgeElem.style.display = 'inline-flex';
 
     if (hlsInstance) {
       hlsInstance.destroy();
@@ -671,6 +731,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showError(heading, message) {
+    hideWelcomePortal();
     loader.classList.add('hidden');
     errorHeading.textContent = heading;
     errorMsg.textContent = message;
@@ -679,6 +740,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 16. Dynamic Stream Resolver for Own Short URLs (?v=ID or ?s=ID)
   async function resolveAndPlay(surl) {
+    hideWelcomePortal();
     loader.classList.remove('hidden');
     loaderText.textContent = 'Connecting high-speed stream...';
     try {
@@ -713,7 +775,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const sizeFormatted = vid.size ? `${(vid.size / (1024 * 1024)).toFixed(1)} MB` : '';
         videoTitleElem.textContent = title;
         document.title = `${title} — TeravidsPlay`;
-        if (sizeFormatted) fileSizeElem.textContent = sizeFormatted;
+        if (sizeFormatted) {
+          fileSizeElem.textContent = sizeFormatted;
+          fileSizeElem.style.display = 'inline-flex';
+        }
         if (vid.thumbnailUrl) {
           videoElement.poster = vid.thumbnailUrl;
         }
@@ -768,6 +833,6 @@ document.addEventListener('DOMContentLoaded', () => {
   } else if (streamUrl) {
     loadStream(streamUrl);
   } else {
-    showError('Welcome to TeravidsPlay', 'Please provide a valid TeraBox short link or stream URL to watch.');
+    showWelcomePortal();
   }
 });
