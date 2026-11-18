@@ -323,10 +323,16 @@ export default {
         const streamUrl = videoData.stream_url || "";
         const thumbUrl = videoData.thumbnailUrl;
 
-        // Build 100% OWN BRAND Short Web Player URL
-        const shortPlayerUrl = surl 
-          ? `${playerBase}/?v=${surl}` 
-          : `${playerBase}/?stream=${encodeURIComponent(streamUrl)}&title=${encodeURIComponent(title)}&size=${encodeURIComponent(sizeFormatted)}`;
+        // Build 100% OWN BRAND Short Web Player URL with auto-unlock & metadata
+        const encodedTitle = encodeURIComponent(title || "");
+        const encodedSize = encodeURIComponent(sizeFormatted || "");
+        const encodedThumb = thumbUrl && thumbUrl.startsWith("http") ? encodeURIComponent(thumbUrl) : "";
+        
+        let playerParams = surl ? [`v=${surl}`, "tg=1"] : [`stream=${encodeURIComponent(streamUrl)}`, "tg=1"];
+        if (encodedTitle) playerParams.push(`title=${encodedTitle}`);
+        if (encodedSize) playerParams.push(`size=${encodedSize}`);
+        if (encodedThumb) playerParams.push(`thumb=${encodedThumb}`);
+        const shortPlayerUrl = `${playerBase}/?${playerParams.join("&")}`;
 
         const cleanTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 120);
         const sizeLabel = (sizeFormatted && sizeFormatted !== "HD Stream" && sizeFormatted !== "0 B" && sizeFormatted !== "Unknown Size") 
