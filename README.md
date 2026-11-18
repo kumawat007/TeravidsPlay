@@ -35,5 +35,5 @@
 
 ---
 
-### 👨‍💻 Creator
+### 👨‍💻 Creator 
 Developed with ❤️ by **[KUMAWAT⁰⁰⁷ PRINTs](https://github.com/kumawat007)** • Official Channel: **[@teravidsplayer](https://t.me/teravidsplayer)**
