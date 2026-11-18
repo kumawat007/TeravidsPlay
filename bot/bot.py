@@ -123,6 +123,7 @@ def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, m
     caption = "\n\n".join(lines)
 
     if thumb_url and thumb_url.startswith("http"):
+        # 1. Try delivering photo via CDN URL directly
         try:
             return bot.send_photo(
                 chat_id=chat_id,
@@ -131,7 +132,19 @@ def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, m
                 reply_markup=markup,
             )
         except Exception as e:
-            logger.warning(f"Could not deliver thumbnail photo to {chat_id}: {e}")
+            logger.warning(f"Could not deliver thumbnail photo via URL to {chat_id}: {e}. Retrying via direct byte stream...")
+            # 2. Try fetching image bytes directly to bypass Telegram server-side CDN fetch blocks
+            try:
+                img_res = requests.get(thumb_url, headers=DEFAULT_HEADERS, timeout=6)
+                if img_res.status_code == 200 and len(img_res.content) > 100:
+                    return bot.send_photo(
+                        chat_id=chat_id,
+                        photo=img_res.content,
+                        caption=caption,
+                        reply_markup=markup,
+                    )
+            except Exception as e2:
+                logger.warning(f"Direct byte photo delivery also failed: {e2}")
 
     return bot.send_message(
         chat_id=chat_id,
@@ -161,7 +174,12 @@ def handle_channel_post(message: types.Message):
     surl = data.get("surl") or extractor.parse_surl(raw_url) or ""
 
     if data.get("success"):
-        title = data.get("title") or title_hint or "TeraBox Video"
+        real_title = data.get("title") or ""
+        # Prioritize custom user-typed title/caption, else use real file title from extractor
+        if title_hint:
+            title = title_hint
+        else:
+            title = real_title or "TeraBox Video"
         size = data.get("size_formatted", "")
         quality = data.get("quality", "HD 1080p")
         stream_url = data.get("stream_url")
@@ -258,7 +276,12 @@ def handle_private_post(message: types.Message):
     surl = data.get("surl") or extractor.parse_surl(raw_url) or ""
 
     if data.get("success"):
-        title = data.get("title") or title_hint or "TeraBox Video"
+        real_title = data.get("title") or ""
+        # Prioritize custom user-typed title/caption, else use real file title from extractor
+        if title_hint:
+            title = title_hint
+        else:
+            title = real_title or "TeraBox Video"
         size = data.get("size_formatted", "")
         quality = data.get("quality", "HD 1080p")
         stream_url = data.get("stream_url")
@@ -422,6 +445,36 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         pass
 
 
+def start_keepalive_pinger():
+    """
+    Background keepalive pinger that pings the Render Web Service every 8 minutes.
+    Prevents Render Free Tier instances from sleeping due to zero inbound HTTP requests.
+    """
+    def pinger_loop():
+        # Delay initial ping so the health server has fully bound
+        time.sleep(25)
+        raw_url = os.getenv("RENDER_EXTERNAL_URL", "https://teravidsplay.onrender.com").strip()
+        target_url = raw_url.rstrip("/") + "/"
+        logger.info(f"[KeepAlive] Keepalive pinger initialized. Target: {target_url}")
+        
+        while True:
+            try:
+                resp = requests.get(
+                    target_url,
+                    headers={"User-Agent": "TeravidsPlay-KeepAlive/1.0"},
+                    timeout=15
+                )
+                logger.info(f"[KeepAlive] Keepalive ping sent -> HTTP {resp.status_code}")
+            except Exception as e:
+                logger.warning(f"[KeepAlive] Keepalive ping notice: {e}")
+            
+            # Sleep 8 minutes (Render free tier timeout is 15 minutes of inbound HTTP inactivity)
+            time.sleep(8 * 60)
+
+    thread = threading.Thread(target=pinger_loop, daemon=True)
+    thread.start()
+
+
 def start_health_server():
     port_str = os.getenv("PORT")
     if not port_str:
@@ -444,6 +497,9 @@ if __name__ == "__main__":
 
     # Start health server for Render / Koyeb cloud hosting (if PORT is set)
     start_health_server()
+
+    # Start 24/7 keepalive pinger to prevent Render free instance from sleeping
+    start_keepalive_pinger()
 
     # Resilient polling engine: Handles Render rolling deployments & dual-instance 409 conflicts
     while True:

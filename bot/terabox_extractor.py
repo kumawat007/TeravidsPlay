@@ -108,16 +108,23 @@ def extract_url(text: str) -> Optional[str]:
 
 
 def format_bytes(size_bytes: int) -> str:
-    """Formats raw bytes into clean human-readable size string."""
+    """Formats raw bytes into clean human-readable size string (e.g. 1.85 GB, 5.6 MB)."""
     try:
         size = float(size_bytes)
         if size <= 0:
             return "Unknown Size"
         for unit in ["B", "KB", "MB", "GB", "TB"]:
             if size < 1024.0:
-                return f"{size:.1f} {unit}" if unit in ["MB", "GB"] else f"{int(size)} {unit}"
+                if unit in ["MB", "GB"]:
+                    formatted = f"{size:.2f} {unit}"
+                    if formatted.endswith(".00 " + unit):
+                        return f"{int(size)} {unit}"
+                    elif formatted.endswith("0 " + unit):
+                        return f"{size:.1f} {unit}"
+                    return formatted
+                return f"{int(size)} {unit}"
             size /= 1024.0
-        return f"{size:.1f} PB"
+        return f"{size:.2f} PB"
     except (ValueError, TypeError):
         return "Unknown Size"
 
@@ -158,8 +165,8 @@ class TeraBoxExtractor:
         try:
             endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(surl_or_url)}"
             logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker: {endpoint}")
-            # Fast 2.5s timeout for instant turnaround
-            resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=2.5)
+            # Optimal 8s timeout to ensure full metadata (title, size, thumbnail) is extracted
+            resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=8)
             self.last_diagnostics.append(f"Worker {endpoint} -> status {resp.status_code}")
             logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code}")
             if resp.status_code == 200:
@@ -245,7 +252,7 @@ class TeraBoxExtractor:
                 "https://iteraplay.in/api/videos/import",
                 json={"url": share_url},
                 headers=headers,
-                timeout=3
+                timeout=8
             )
             if resp.status_code == 200:
                 data = resp.json()

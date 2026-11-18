@@ -538,4 +538,18 @@ export default {
       );
     }
   },
+
+  // 24/7 Cloudflare Edge Cron Trigger to keep Render Web Service permanently awake
+  async scheduled(event, env, ctx) {
+    const renderUrl = env.RENDER_URL || "https://teravidsplay.onrender.com/";
+    try {
+      await fetch(renderUrl, {
+        method: "GET",
+        headers: { "User-Agent": "TeravidsPlay-CloudflareCronKeepAlive/1.0" },
+      });
+      console.log(`[Scheduled] Render keepalive ping delivered to ${renderUrl}`);
+    } catch (e) {
+      console.warn(`[Scheduled] Keepalive ping error: ${e.message}`);
+    }
+  },
 };
