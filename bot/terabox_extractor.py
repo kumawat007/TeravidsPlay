@@ -411,8 +411,9 @@ class TeraBoxExtractor:
         if surl:
             formatted_surl = surl if surl.startswith("1") else "1" + surl
             clean_token = surl.lstrip("1")
-            candidates.append(f"https://1024terabox.com/s/{formatted_surl}")
             candidates.append(f"https://terabox.com/s/{formatted_surl}")
+            candidates.append(f"https://1024terabox.com/s/{formatted_surl}")
+            candidates.append(f"https://teraboxapp.com/s/{formatted_surl}")
             candidates.append(f"https://www.terabox.app/sharing/link?surl={clean_token}")
         if clean_url not in candidates:
             candidates.append(clean_url)
@@ -426,9 +427,9 @@ class TeraBoxExtractor:
                 worker_res["surl"] = surl or formatted_surl
                 return worker_res
 
-        # Step 3: Try High-Speed Edge Engine directly on candidate
-        if clean_url:
-            res = self.resolve_via_highspeed_engine(clean_url)
+        # Step 3: Try High-Speed Edge Engine across candidates
+        for cand in candidates:
+            res = self.resolve_via_highspeed_engine(cand)
             if res and res.get("success"):
                 res["surl"] = surl or formatted_surl
                 return res

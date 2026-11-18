@@ -135,14 +135,19 @@ export default {
         });
       }
 
-      const formattedToken = surl.startsWith("http") ? "" : (surl.startsWith("1") ? surl : "1" + surl);
-      const candidates = surl.startsWith("http")
-        ? [surl]
-        : [
-            `https://1024terabox.com/s/${formattedToken}`,
-            `https://terabox.com/s/${formattedToken}`,
-            `https://teraboxapp.com/s/${formattedToken}`
-          ];
+      let cleanToken = surl.replace(/^.*\/s\//, "").replace("surl=", "").trim();
+      if (cleanToken.includes("?")) cleanToken = cleanToken.split("?")[0];
+      if (cleanToken.includes("&")) cleanToken = cleanToken.split("&")[0];
+      const formattedToken = cleanToken.startsWith("1") ? cleanToken : "1" + cleanToken;
+
+      const candidates = [
+        `https://terabox.com/s/${formattedToken}`,
+        `https://1024terabox.com/s/${formattedToken}`,
+        `https://teraboxapp.com/s/${formattedToken}`
+      ];
+      if (surl.startsWith("http") && !candidates.includes(surl)) {
+        candidates.push(surl);
+      }
 
       const debugLogs = [];
       for (const candidate of candidates) {
