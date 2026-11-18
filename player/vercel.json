@@ -2,12 +2,12 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/v/:id",
-      "destination": "/index.html?v=:id"
+      "source": "/v/:path*",
+      "destination": "/index.html"
     },
     {
-      "source": "/s/:id",
-      "destination": "/index.html?s=:id"
+      "source": "/s/:path*",
+      "destination": "/index.html"
     },
     {
       "source": "/(.*)",

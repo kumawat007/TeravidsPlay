@@ -118,7 +118,7 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "",
     encoded_thumb = urllib.parse.quote(thumb) if (thumb and thumb.startswith("http")) else ""
 
     if PLAYER_URL and surl:
-        # Own Domain Web Player Short URL (/v/TOKEN) with auto-unlock flag
+        # Own Domain Web Player Short URL (?v=TOKEN) with auto-unlock flag
         extra = []
         if encoded_title:
             extra.append(f"title={encoded_title}")
@@ -127,7 +127,7 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "",
         if encoded_thumb:
             extra.append(f"thumb={encoded_thumb}")
         extra_query = ("&" + "&".join(extra)) if extra else ""
-        player_link = f"{PLAYER_URL}/v/{surl}?tg=1{extra_query}"
+        player_link = f"{PLAYER_URL}/?v={surl}&tg=1{extra_query}"
     elif PLAYER_URL:
         encoded_stream = urllib.parse.quote(stream_url)
         params = [f"stream={encoded_stream}", "tg=1"]

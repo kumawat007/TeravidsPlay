@@ -122,7 +122,8 @@ export default {
     if (url.pathname.startsWith("/v/") || url.pathname.startsWith("/s/")) {
       const parts = url.pathname.split("/").filter(Boolean);
       const surl = parts[1] || "";
-      return Response.redirect(`${playerBase}/v/${surl}${url.search || '?tg=1'}`, 302);
+      const search = url.search ? (url.search.includes("tg=") ? url.search : url.search + "&tg=1") : "?tg=1";
+      return Response.redirect(`${playerBase}/?v=${surl}${search.replace('?', '&')}`, 302);
     }
 
     // 2.2 High-Speed Metadata & Stream Resolution API (/api/resolve?surl=...)

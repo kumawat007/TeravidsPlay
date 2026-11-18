@@ -166,10 +166,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-Unlock Telegram Gate if user came from Telegram channel
   const UNLOCK_KEY = 'teravids_channel_unlocked';
-  if (fromTg) {
-    localStorage.setItem(UNLOCK_KEY, 'true');
+  let isChannelUnlocked = Boolean(fromTg);
+  try {
+    if (fromTg) {
+      localStorage.setItem(UNLOCK_KEY, 'true');
+    } else if (localStorage.getItem(UNLOCK_KEY) === 'true') {
+      isChannelUnlocked = true;
+    }
+  } catch (e) {
+    console.warn('[TeravidsPlay] LocalStorage access restricted:', e);
   }
-  let isChannelUnlocked = localStorage.getItem(UNLOCK_KEY) === 'true';
 
   function checkChannelGate() {
     if (isChannelUnlocked) {
@@ -184,10 +190,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (gateUnlockBtn) {
     gateUnlockBtn.addEventListener('click', () => {
       isChannelUnlocked = true;
-      localStorage.setItem(UNLOCK_KEY, 'true');
+      try {
+        localStorage.setItem(UNLOCK_KEY, 'true');
+      } catch (e) {}
       if (channelGateOverlay) channelGateOverlay.style.display = 'none';
       showToast('🎉 Video Unlocked!');
-      videoElement.play().catch(() => {});
+      videoElement.play().catch(() => {
+        updatePlayIcons();
+      });
     });
   }
 
@@ -914,7 +924,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const storageKey = `teravids_pos_${vId || streamUrl.slice(-25) || 'default'}`;
 
   function checkResume() {
-    const saved = localStorage.getItem(storageKey);
+    let saved = null;
+    try { saved = localStorage.getItem(storageKey); } catch (e) {}
     if (saved && Number(saved) > 5) {
       const pos = Number(saved);
       videoElement.currentTime = pos;
@@ -971,7 +982,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
         loader.classList.add('hidden');
-        if (isChannelUnlocked) videoElement.play().catch(() => {});
+        if (isChannelUnlocked) {
+          videoElement.play().catch(() => {
+            updatePlayIcons();
+          });
+        }
       });
 
       hlsInstance.on(Hls.Events.ERROR, (event, data) => {
@@ -994,7 +1009,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // Direct MP4 playback
       videoElement.src = url;
       videoElement.load();
-      if (isChannelUnlocked) videoElement.play().catch(() => {});
+      if (isChannelUnlocked) {
+        videoElement.play().catch(() => {
+          updatePlayIcons();
+        });
+      }
     }
   }
 
@@ -1025,7 +1044,11 @@ document.addEventListener('DOMContentLoaded', () => {
       videoElement.removeAttribute('crossorigin');
       videoElement.src = proxiedUrl;
       videoElement.load();
-      if (isChannelUnlocked) videoElement.play().catch(() => {});
+      if (isChannelUnlocked) {
+        videoElement.play().catch(() => {
+          updatePlayIcons();
+        });
+      }
       return;
     }
 
@@ -1052,20 +1075,33 @@ document.addEventListener('DOMContentLoaded', () => {
         data = await res.json();
       }
 
-      // 2. Direct edge resolver fallback
+      // 2. Direct edge resolver fallback with domain cycling
       if (!data || !data.success) {
-        const fullTeraUrl = `https://1024terabox.com/s/${surl.startsWith('1') ? surl : '1' + surl}`;
-        const directResp = await fetch('https://iteraplay.in/api/videos/import', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Referer': 'https://iteraplay.in/',
-            'Origin': 'https://iteraplay.in',
-          },
-          body: JSON.stringify({ url: fullTeraUrl }),
-        }).catch(() => null);
-        if (directResp && directResp.ok) {
-          data = await directResp.json();
+        const cleanSurl = surl.startsWith('1') ? surl : '1' + surl;
+        const candidates = [
+          `https://terabox.com/s/${cleanSurl}`,
+          `https://1024terabox.com/s/${cleanSurl}`,
+          `https://teraboxapp.com/s/${cleanSurl}`
+        ];
+        for (const cand of candidates) {
+          try {
+            const directResp = await fetch('https://iteraplay.in/api/videos/import', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Referer': 'https://iteraplay.in/',
+                'Origin': 'https://iteraplay.in',
+              },
+              body: JSON.stringify({ url: cand }),
+            });
+            if (directResp.ok) {
+              const candData = await directResp.json();
+              if (candData && candData.success && candData.videos && candData.videos.length > 0) {
+                data = candData;
+                break;
+              }
+            }
+          } catch (e) {}
         }
       }
 
@@ -1093,6 +1129,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const dlUrl = vid.stream_url || playSource;
         if (topDownloadBtn) topDownloadBtn.href = dlUrl;
         if (btnDownloadExt) btnDownloadExt.href = dlUrl;
+
+        // Auto trigger download if ?dl=1 requested
+        if (urlParams.get('dl') === '1' && dlUrl) {
+          const a = document.createElement('a');
+          a.href = dlUrl;
+          a.download = title || 'video.mp4';
+          a.target = '_blank';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          showToast('🚀 Fast Download Started!');
+        }
 
         loadStream(playSource, thumb);
         return;
@@ -1133,6 +1181,16 @@ document.addEventListener('DOMContentLoaded', () => {
   if (vId) {
     resolveAndPlay(vId);
   } else if (streamUrl) {
+    if (urlParams.get('dl') === '1') {
+      const a = document.createElement('a');
+      a.href = streamUrl;
+      a.download = cleanTitle || 'video.mp4';
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showToast('🚀 Fast Download Started!');
+    }
     loadStream(streamUrl, cleanThumb);
   }
 });
