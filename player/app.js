@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const playerBottomBar = document.getElementById('playerBottomBar');
   const centerPlayBtn = document.getElementById('centerPlayBtn');
   const centerPlayIcon = document.getElementById('centerPlayIcon');
+  const centerActionRipple = document.getElementById('centerActionRipple');
   const loader = document.getElementById('loader');
   const loaderText = document.getElementById('loaderText');
 
@@ -291,8 +292,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Single Tap toggles controls, Double Tap seeks 10s
+  // Center Ripple Animation (YouTube-Style Play / Pause Feedback)
+  function triggerCenterRipple(type) {
+    if (!centerActionRipple) return;
+    centerActionRipple.innerHTML = type === 'play'
+      ? '<svg width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>'
+      : '<svg width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+    centerActionRipple.style.display = 'flex';
+    centerActionRipple.classList.remove('animate');
+    void centerActionRipple.offsetWidth;
+    centerActionRipple.classList.add('animate');
+    setTimeout(() => {
+      centerActionRipple.classList.remove('animate');
+      setTimeout(() => {
+        centerActionRipple.style.display = 'none';
+      }, 200);
+    }, 320);
+  }
+
+  // Unified Mobile/Desktop Tap & Gesture System:
+  // - Tap in Center Zone (25% - 75% width): Toggles Play / Pause with instant animated ripple!
+  // - Tap in Left (<25%): 1 Tap toggles controls, Double Tap rewinds 10s!
+  // - Tap in Right (>75%): 1 Tap toggles controls, Double Tap fast-forwards 10s!
   playerContainer.addEventListener('click', (e) => {
+    // If clicking a button, input, link, or popovers, allow direct event and keep controls alive
     if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover') || e.target.closest('.channel-gate-card') || e.target.closest('.error-card')) {
       showControls(4000);
       return;
@@ -303,7 +326,18 @@ document.addEventListener('DOMContentLoaded', () => {
       ? e.clientX
       : ((e.changedTouches && e.changedTouches[0] && e.changedTouches[0].clientX) || (e.touches && e.touches[0] && e.touches[0].clientX) || (rect.left + rect.width / 2));
     const clickX = touchX - rect.left;
-    const isRightSide = clickX > rect.width / 2;
+    const ratio = clickX / rect.width;
+
+    const isCenterZone = ratio >= 0.25 && ratio <= 0.75;
+    const isLeftSide = ratio < 0.25;
+    const isRightSide = ratio > 0.75;
+
+    // Center zone tap immediately toggles Play / Pause!
+    if (isCenterZone) {
+      togglePlay();
+      showControls(3500);
+      return;
+    }
 
     tapCount++;
     if (tapCount === 1) {
@@ -317,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isRightSide) {
         videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
         showRipple('right');
-      } else {
+      } else if (isLeftSide) {
         videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
         showRipple('left');
       }
@@ -330,10 +364,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const isPlaying = !videoElement.paused;
     if (isPlaying) {
       playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
-      centerPlayBtn.classList.add('hidden');
+      centerPlayIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+      centerPlayBtn.setAttribute('aria-label', 'Pause Video');
+      centerPlayBtn.title = 'Pause Video';
+      centerPlayBtn.classList.remove('hidden');
     } else {
       playIcon.innerHTML = '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
       centerPlayIcon.innerHTML = '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
+      centerPlayBtn.setAttribute('aria-label', 'Play Video');
+      centerPlayBtn.title = 'Play Video';
       centerPlayBtn.classList.remove('hidden');
       showControls();
     }
@@ -341,15 +380,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function togglePlay() {
     if (videoElement.paused) {
-      videoElement.play().catch(() => {});
+      videoElement.play().then(() => {
+        triggerCenterRipple('play');
+      }).catch(() => {
+        triggerCenterRipple('play');
+      });
     } else {
       videoElement.pause();
+      triggerCenterRipple('pause');
     }
     updatePlayIcons();
   }
 
+  function handleCenterPlayTap(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    togglePlay();
+    showControls(3500);
+  }
+
   if (playBtn) playBtn.addEventListener('click', togglePlay);
-  if (centerPlayBtn) centerPlayBtn.addEventListener('click', togglePlay);
+  if (centerPlayBtn) {
+    centerPlayBtn.addEventListener('click', handleCenterPlayTap);
+    centerPlayBtn.addEventListener('touchend', handleCenterPlayTap);
+  }
   videoElement.addEventListener('play', updatePlayIcons);
   videoElement.addEventListener('pause', updatePlayIcons);
 
@@ -642,6 +696,15 @@ document.addEventListener('DOMContentLoaded', () => {
       settingsMenu.style.display = 'none';
     });
   }
+
+  // Light dismiss settings menu when tapping outside
+  document.addEventListener('click', (e) => {
+    if (settingsMenu && settingsMenu.style.display === 'block') {
+      if (!settingsMenu.contains(e.target) && !settingsBtn.contains(e.target)) {
+        settingsMenu.style.display = 'none';
+      }
+    }
+  });
 
   // Row Clicks
   if (rowSpeed) {
@@ -1006,8 +1069,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (externalDownloadBtn) externalDownloadBtn.href = url;
 
     const isM3U8 = url.includes('.m3u8');
-    if (topFormatBadge) topFormatBadge.textContent = isM3U8 ? 'HLS ADAPTIVE' : '1080P HD';
-    if (formatBadgeElem) formatBadgeElem.textContent = isM3U8 ? 'HLS ADAPTIVE' : 'FULL HD 1080P';
+    if (topFormatBadge) topFormatBadge.textContent = '1080P FULL HD';
+    if (formatBadgeElem) formatBadgeElem.textContent = 'FULL HD 1080P';
 
     if (hlsInstance) {
       hlsInstance.destroy();

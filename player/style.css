@@ -398,30 +398,65 @@ html, body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 68px;
-  height: 68px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
-  background: rgba(6, 9, 14, 0.85);
-  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(6, 9, 14, 0.82);
+  border: 2px solid rgba(255, 255, 255, 0.4);
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 15;
+  z-index: 18;
   backdrop-filter: blur(8px);
-  transition: transform 0.2s ease, background 0.2s ease, opacity 0.3s ease;
+  touch-action: manipulation;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, opacity 0.25s ease, border-color 0.2s ease;
 }
 
-.center-play-btn:hover {
+/* Touch hit expansion (WCAG 2.5.5 minimum 44x44 target area) */
+.center-play-btn::after {
+  content: "";
+  position: absolute;
+  inset: -14px;
+}
+
+.center-play-btn:hover,
+.center-play-btn:active {
   background: var(--yt-red);
   border-color: var(--yt-red);
-  transform: translate(-50%, -50%) scale(1.12);
+  transform: translate(-50%, -50%) scale(1.1);
 }
 
 .center-play-btn.hidden {
   opacity: 0;
   pointer-events: none;
+}
+
+/* YouTube-Style Center Play/Pause Animated Feedback Ripple */
+.center-action-ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.6);
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: rgba(6, 9, 14, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 22;
+  pointer-events: none;
+  opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
+}
+
+.center-action-ripple.animate {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.18);
 }
 
 /* Loader (100% Transparent Over Movie/Video) */
@@ -1261,57 +1296,90 @@ html, body {
     transform: scale(1.1);
   }
 
-  /* Controls Row: Clean, Finger-Friendly Spacing */
+  /* Controls Row: Zero-Overflow, 100% Touch-Friendly Spacing */
   .player-overlay-bottom {
-    padding: 0 10px 8px;
+    padding: 0 8px max(6px, env(safe-area-inset-bottom, 0px));
   }
 
   .controls-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    width: 100%;
+    overflow: hidden;
   }
 
   .controls-left {
-    gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
   }
 
   .controls-right {
-    gap: 5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
   }
 
+  /* Control buttons sized for comfortable mobile touch */
   .ctrl-btn {
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 38px;
+    min-height: 38px;
     padding: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .volume-slider {
+  /* Hide Hardware-Redundant Volume controls on mobile (Phone physical keys used) */
+  .volume-control-group,
+  .volume-slider,
+  #muteBtn {
     display: none !important;
+  }
+
+  /* Hide wide pill buttons (Boost & Aspect Ratio) from mobile bottom bar */
+  /* They are 100% functional inside Settings Popover (⚙️) */
+  #audioBoostBtn,
+  #aspectRatioBtn {
+    display: none !important;
+  }
+
+  /* Hide redundant format badge in player top overlay on mobile (keeps title 100% readable) */
+  #topFormatBadge {
+    display: none !important;
+  }
+
+  /* Show Rotate Button in Controls Right */
+  #rotateBtn.mobile-only-ctrl {
+    display: inline-flex !important;
+  }
+
+  /* Fullscreen & Settings Buttons ALWAYS visible */
+  #fullscreenBtn,
+  #settingsBtn {
+    display: inline-flex !important;
   }
 
   .time-display {
     font-size: 11px;
     letter-spacing: -0.2px;
     white-space: nowrap;
+    padding: 0 3px;
   }
 
   .top-video-title {
-    font-size: 12.5px;
-    max-width: calc(100vw - 120px);
-  }
-
-  .ctrl-pill-btn {
-    padding: 4px 8px;
-    font-size: 11px;
-    border-radius: 12px;
+    font-size: 13px;
+    max-width: calc(100vw - 110px);
   }
 
   /* Settings Popover on Mobile */
   .settings-popover {
-    width: 250px;
-    max-width: calc(100vw - 24px);
-    right: 10px;
+    width: 260px;
+    max-width: calc(100vw - 20px);
+    right: 8px;
     bottom: 54px;
     border-radius: 14px;
   }
