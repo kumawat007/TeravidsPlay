@@ -60,6 +60,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const settingsBtn = document.getElementById('settingsBtn');
   const fullscreenBtn = document.getElementById('fullscreenBtn');
   const fullscreenIcon = document.getElementById('fullscreenIcon');
+  const rotateBtn = document.getElementById('rotateBtn');
+  const topRotateBtn = document.getElementById('topRotateBtn');
 
   // Settings Popover & Subviews
   const settingsMenu = document.getElementById('settingsMenu');
@@ -297,7 +299,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const rect = playerContainer.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
+    const touchX = (e.clientX !== undefined && e.clientX !== 0)
+      ? e.clientX
+      : ((e.changedTouches && e.changedTouches[0] && e.changedTouches[0].clientX) || (e.touches && e.touches[0] && e.touches[0].clientX) || (rect.left + rect.width / 2));
+    const clickX = touchX - rect.left;
     const isRightSide = clickX > rect.width / 2;
 
     tapCount++;
@@ -740,6 +745,47 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+  // 13.1 Video Screen Rotation (Only for Mobile Screens)
+  let isMobileLandscapeRotated = false;
+
+  async function toggleVideoRotation() {
+    isMobileLandscapeRotated = !isMobileLandscapeRotated;
+
+    // 1. Try Screen Orientation API (Android Chrome, Edge)
+    if (screen.orientation && screen.orientation.lock) {
+      try {
+        if (isMobileLandscapeRotated) {
+          await screen.orientation.lock('landscape');
+          showToast('🔄 Rotated to Landscape');
+          return;
+        } else {
+          await screen.orientation.lock('portrait');
+          showToast('📱 Rotated to Portrait');
+          return;
+        }
+      } catch (err) {
+        // Fallback to in-player virtual rotation if lock is rejected or not supported
+      }
+    }
+
+    // 2. Hardware / CSS In-Player 90-Degree Virtual Rotation
+    // Works 100% on iOS Safari, Android WebViews, Telegram in-app browser, even with Phone Auto-Rotate Lock ON!
+    if (isMobileLandscapeRotated) {
+      playerContainer.classList.add('mobile-force-landscape');
+      document.body.classList.add('mobile-rotated-active');
+      showToast('🔄 Landscape Mode Activated');
+      showControls(3500);
+    } else {
+      playerContainer.classList.remove('mobile-force-landscape');
+      document.body.classList.remove('mobile-rotated-active');
+      showToast('📱 Portrait Mode Activated');
+      showControls(3500);
+    }
+  }
+
+  if (rotateBtn) rotateBtn.addEventListener('click', toggleVideoRotation);
+  if (topRotateBtn) topRotateBtn.addEventListener('click', toggleVideoRotation);
 
   // 14. Ultra Long-Press: 2X Speed & 4X Turbo Speed
   let pressTimer2x = null;

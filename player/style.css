@@ -1172,6 +1172,22 @@ html, body {
   color: #ffffff;
 }
 
+.btn-coffee-pill {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.btn-coffee-pill:hover {
+  background: var(--gold-gradient);
+  color: #ffffff;
+}
+
+/* Desktop default: Hide mobile-only controls */
+.mobile-only-ctrl {
+  display: none !important;
+}
+
 .video-creator-footer {
   padding-top: 14px;
   font-size: 13px;
@@ -1200,44 +1216,150 @@ html, body {
    11. MOBILE & RESPONSIVE PERFECTION
    ========================================================================== */
 @media (max-width: 768px) {
-  .app-navbar { padding: 0 14px; }
+  /* Hide Top Bar Buttons on Mobile (Moved to Bottom Actions!) */
+  .app-navbar .nav-right {
+    display: none !important;
+  }
+
+  .app-navbar {
+    height: 46px;
+    padding: 0 14px;
+  }
+
+  .nav-brand-title {
+    font-size: 16px;
+  }
+
   .cinema-player-viewport {
     height: auto;
     aspect-ratio: 16 / 9;
+    touch-action: manipulation;
   }
+
+  /* Show Mobile Only Controls inside player */
+  .mobile-only-ctrl {
+    display: inline-flex !important;
+  }
+
+  /* Scrubber Touch Targets for Mobile Fingers */
+  .scrubber-container {
+    height: 26px;
+    padding: 10px 0;
+    touch-action: none;
+    margin-bottom: 2px;
+  }
+
+  .scrubber-track {
+    height: 4px;
+    border-radius: 2px;
+  }
+
+  .scrubber-thumb {
+    width: 14px;
+    height: 14px;
+    opacity: 1 !important;
+    transform: scale(1.1);
+  }
+
+  /* Controls Row: Clean, Finger-Friendly Spacing */
+  .player-overlay-bottom {
+    padding: 0 10px 8px;
+  }
+
+  .controls-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .controls-left {
+    gap: 6px;
+  }
+
+  .controls-right {
+    gap: 5px;
+  }
+
+  .ctrl-btn {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 6px;
+  }
+
+  .volume-slider {
+    display: none !important;
+  }
+
+  .time-display {
+    font-size: 11px;
+    letter-spacing: -0.2px;
+    white-space: nowrap;
+  }
+
+  .top-video-title {
+    font-size: 12.5px;
+    max-width: calc(100vw - 120px);
+  }
+
+  .ctrl-pill-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 12px;
+  }
+
+  /* Settings Popover on Mobile */
+  .settings-popover {
+    width: 250px;
+    max-width: calc(100vw - 24px);
+    right: 10px;
+    bottom: 54px;
+    border-radius: 14px;
+  }
+
+  /* Video Metadata & Actions below Player */
   .video-info-section {
     padding: 14px 14px 40px;
     margin: 0;
   }
-  .video-main-title { font-size: 16.5px; }
-  .volume-slider { display: none; }
-  .time-display { font-size: 11px; }
-  .top-video-title { font-size: 12.5px; }
-  .ctrl-pill-btn { padding: 3px 8px; font-size: 11px; }
-  .settings-popover {
-    width: 250px;
-    right: 8px;
-    bottom: 58px;
+
+  .video-main-title {
+    font-size: 16.5px;
+    line-height: 1.35;
   }
+
   .info-header-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 14px;
   }
+
+  /* Modern 4-Button Grid for Mobile Actions (Download, Share, Channel, Coffee) */
   .info-actions-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
     width: 100%;
-    justify-content: flex-start;
+  }
+
+  .info-actions-row .action-btn-pill {
+    width: 100%;
+    justify-content: center;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 700;
   }
 }
 
 /* Small mobile portrait screens (< 480px) */
 @media (max-width: 480px) {
-  .ctrl-pill-btn span {
-    display: none;
+  .ctrl-btn {
+    padding: 5px;
+    min-width: 34px;
+    min-height: 34px;
   }
   .ctrl-pill-btn {
-    padding: 6px;
-    border-radius: 50%;
+    padding: 3px 6px;
+    font-size: 10.5px;
   }
   .controls-left {
     gap: 4px;
@@ -1247,16 +1369,56 @@ html, body {
   }
   .time-display {
     font-size: 10px;
-    letter-spacing: -0.2px;
   }
   .settings-popover {
-    width: 220px;
-    right: 4px;
-    bottom: 50px;
+    width: 230px;
+    right: 8px;
+    bottom: 48px;
   }
 }
 
-/* Immersive Landscape on Mobile Devices */
+/* ==========================================================================
+   12. UNIVERSAL MOBILE VIDEO ROTATION (In-Player 90-Deg Cinema Rotation)
+   ========================================================================== */
+@media (max-width: 768px) {
+  .cinema-player-viewport.mobile-force-landscape {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100dvh !important;
+    width: 100vh !important;
+    height: 100dvw !important;
+    height: 100vw !important;
+    max-height: 100vw !important;
+    transform: rotate(90deg) translateY(-100vw) !important;
+    transform-origin: top left !important;
+    z-index: 9999999 !important;
+    border-radius: 0 !important;
+    background: #000000 !important;
+    box-shadow: none !important;
+  }
+
+  .cinema-player-viewport.mobile-force-landscape video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+  }
+
+  body.mobile-rotated-active {
+    overflow: hidden !important;
+    position: fixed !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  body.mobile-rotated-active .app-navbar,
+  body.mobile-rotated-active .video-info-section,
+  body.mobile-rotated-active .home-container {
+    display: none !important;
+  }
+}
+
+/* Immersive Landscape on Mobile Devices (Physical Phone Rotation) */
 @media (max-height: 520px) and (orientation: landscape) {
   .app-navbar {
     display: none !important;
