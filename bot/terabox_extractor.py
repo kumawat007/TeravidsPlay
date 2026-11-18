@@ -346,6 +346,17 @@ class TeraBoxExtractor:
                             "download_url": dlink,
                             "source": "TeraBox Direct Scraper",
                         }
+                    elif filename:
+                        return {
+                            "success": True,
+                            "title": filename,
+                            "size_bytes": size,
+                            "size_formatted": format_bytes(size),
+                            "thumbnail": thumb,
+                            "stream_url": "",
+                            "download_url": "",
+                            "source": "TeraBox Metadata Scraper",
+                        }
         except Exception as e:
             print(f"[TeraBoxExtractor] Direct scraper exception: {e}")
         return None
@@ -412,6 +423,14 @@ class TeraBoxExtractor:
             if res and res.get("success"):
                 res["surl"] = surl or formatted_surl
                 return res
+
+        # Step 3.5: Try Direct TeraBox Scraper for Real Title & Thumbnail
+        if surl:
+            clean_token = surl.lstrip("1")
+            direct_res = self.resolve_via_direct_scraper(clean_token)
+            if direct_res and direct_res.get("success"):
+                direct_res["surl"] = surl or formatted_surl
+                return direct_res
 
         # Step 4: Direct Web Player Client Fallback
         # When cloud datacenter IPs are challenged by bot detection, the client-side

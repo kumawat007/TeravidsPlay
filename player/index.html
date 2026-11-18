@@ -16,25 +16,21 @@
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <!-- Plyr Video Player Suite -->
-  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
-  <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-
   <!-- HLS.js for Adaptive Streams -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 
-  <!-- Google Fonts: Plus Jakarta Sans & Roboto -->
+  <!-- Google Fonts: Plus Jakarta Sans & Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="style.css" />
 </head>
-<body class="yt-theme">
+<body class="cinema-body">
   <!-- Top Navigation Bar -->
   <header class="app-navbar">
     <div class="nav-left">
-      <!-- 1. Telegram Logo + TeravidsPlay (links to official Telegram channel) -->
+      <!-- Telegram Logo + TeravidsPlay (links to official Telegram channel) -->
       <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="nav-brand" title="TeravidsPlay — Official Telegram Channel">
         <div class="telegram-icon-badge">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="#0088cc">
@@ -54,14 +50,6 @@
         <span>Join Channel</span>
       </a>
 
-      <!-- GitHub Link -->
-      <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer" class="nav-pill nav-pill-github" title="Developer GitHub">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-        </svg>
-        <span>GitHub</span>
-      </a>
-
       <!-- Buy Me a Coffee Link -->
       <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="nav-pill nav-pill-coffee" title="Buy me a coffee">
         <span>☕</span>
@@ -71,7 +59,7 @@
   </header>
 
   <!-- ============================================================== -->
-  <!-- 1. HOME PAGE VIEW (Shown ONLY when no video link is provided)   -->
+  <!-- 1. HOME PAGE VIEW (Shown ONLY when no video link is present)    -->
   <!-- ============================================================== -->
   <div id="homePage" class="home-container" style="display: none;">
     <div class="home-card">
@@ -106,13 +94,6 @@
           <span>Join Telegram Channel</span>
         </a>
 
-        <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer" class="home-action-btn btn-gh">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-          </svg>
-          <span>GitHub</span>
-        </a>
-
         <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="home-action-btn btn-cf">
           <span>☕</span>
           <span>Buy me a coffee</span>
@@ -136,26 +117,56 @@
   </div>
 
   <!-- ============================================================== -->
-  <!-- 2. VIDEO PLAYER VIEW (Shown ONLY during video streaming)        -->
+  <!-- 2. CINEMA VIDEO PLAYER VIEW (Shown ONLY during playback)        -->
   <!-- ============================================================== -->
   <div id="playerView" class="player-view-container" style="display: none;">
     <div class="player-inner-col">
       <!-- 16:9 Cinema Viewport -->
-      <div class="video-viewport" id="playerContainer">
+      <div class="cinema-player-viewport" id="playerContainer" tabindex="0">
         <!-- Ambient Glow Canvas -->
         <canvas id="ambientCanvas" class="ambient-canvas" width="64" height="36"></canvas>
+
+        <!-- Video Element -->
+        <video id="player" playsinline preload="metadata"></video>
+
+        <!-- TOP BAR (Inside Player) -->
+        <div id="playerTopBar" class="player-overlay-top">
+          <div class="top-title-group">
+            <span class="top-quality-badge" id="topFormatBadge">1080P HD</span>
+            <span class="top-video-title" id="topVideoTitle">Loading video...</span>
+          </div>
+          <div class="top-actions-group">
+            <a id="topDownloadBtn" href="#" target="_blank" class="top-icon-btn" title="Fast Direct Download" aria-label="Direct Download">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </a>
+            <button id="topShareBtn" class="top-icon-btn" title="Share Video" aria-label="Share Video">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- CENTER CONTROLS / OVERLAYS -->
+        <!-- Center Big Play/Pause/Replay Button -->
+        <button id="centerPlayBtn" class="center-play-btn" aria-label="Play or Pause Video">
+          <svg id="centerPlayIcon" width="36" height="36" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="6 4 20 12 6 20 6 4"></polygon>
+          </svg>
+        </button>
 
         <!-- Loader -->
         <div id="loader" class="loader-overlay">
           <div class="spinner"></div>
           <p id="loaderText">Connecting high-speed stream...</p>
-        </div>
-
-        <!-- Tap to Unmute Overlay -->
-        <div id="unmuteOverlay" class="unmute-overlay" style="display: none;">
-          <button id="unmuteBtn" class="unmute-banner-btn">
-            <span>🔊 Tap to Unmute</span>
-          </button>
         </div>
 
         <!-- Long-Press 2X & 4X Turbo Speed Overlay -->
@@ -166,7 +177,7 @@
           </div>
         </div>
 
-        <!-- Gesture HUDs -->
+        <!-- Gesture HUDs for Swiping: Brightness & Volume -->
         <div id="brightnessHud" class="gesture-hud brightness-hud" style="display: none;">
           <span class="hud-icon">☀️</span>
           <div class="hud-bar-track">
@@ -193,24 +204,21 @@
 
         <!-- Toast Notification -->
         <div id="resumeToast" class="resume-toast" style="display: none;">
-          <span id="resumeToastText">Resumed from 00:00</span>
+          <span id="resumeToastText">Resumed</span>
         </div>
 
-        <!-- ============================================================== -->
-        <!-- MANDATORY TELEGRAM CHANNEL JOIN LOCK GATE                     -->
-        <!-- ============================================================== -->
-        <div id="channelGateOverlay" class="channel-gate-overlay" style="display: flex;">
+        <!-- Channel Join Gate Overlay -->
+        <div id="channelGateOverlay" class="channel-gate-overlay" style="display: none;">
           <div class="channel-gate-card">
             <div class="gate-lock-icon">
-              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#ff0000" stroke-width="2">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ff0000" stroke-width="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
             </div>
             <h2 class="gate-title">Join Channel to Unlock Video</h2>
             <p class="gate-subtitle">
-              This high-speed 1080p stream is reserved for members of <b>@teravidsplayer</b>.
-              Please join our official channel to unlock instant playback & direct download!
+              Join <b>@teravidsplayer</b> to unlock unlimited 1080p cloud streaming & direct downloads!
             </p>
 
             <div class="gate-actions">
@@ -228,10 +236,6 @@
                 <span>2. I Have Joined (Unlock & Watch)</span>
               </button>
             </div>
-
-            <div class="gate-features-row">
-              <span>⚡ Zero Ads</span> • <span>🔊 300% Sound Boost</span> • <span>🍿 1080p Full HD</span>
-            </div>
           </div>
         </div>
 
@@ -248,64 +252,111 @@
           </div>
         </div>
 
-        <!-- HTML5 Video Player Container -->
-        <video id="player" playsinline crossorigin="anonymous" controls preload="metadata"></video>
-      </div>
-
-      <!-- Video Meta & Controls Bar -->
-      <div class="video-info-section">
-        <h1 id="videoTitle" class="video-main-title">Loading Stream...</h1>
-
-        <div class="video-controls-toolbar">
-          <div class="toolbar-left">
-            <span class="badge format-badge" id="formatBadge">FULL HD</span>
-            <span class="meta-item" id="fileSize"></span>
+        <!-- BOTTOM CONTROLS BAR (Inside Player) -->
+        <div id="playerBottomBar" class="player-overlay-bottom">
+          <!-- Red YouTube Progress Scrubber -->
+          <div id="scrubberContainer" class="scrubber-container">
+            <div class="scrubber-track">
+              <div id="scrubberBuffer" class="scrubber-buffer"></div>
+              <div id="scrubberProgress" class="scrubber-progress"></div>
+              <div id="scrubberThumb" class="scrubber-thumb"></div>
+            </div>
+            <div id="scrubberTooltip" class="scrubber-tooltip">00:00</div>
           </div>
 
-          <div class="toolbar-right">
-            <!-- 300% Volume Boost -->
-            <button id="audioBoostBtn" class="tool-action-btn" title="Boost audio up to 300%">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-              </svg>
-              <span id="audioBoostLabel">Boost: 100%</span>
-            </button>
+          <!-- Controls Row -->
+          <div class="controls-row">
+            <!-- Left Controls -->
+            <div class="controls-left">
+              <!-- Play / Pause -->
+              <button id="playBtn" class="ctrl-btn" title="Play/Pause (Space)" aria-label="Play or Pause">
+                <svg id="playIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="6 4 20 12 6 20 6 4"></polygon>
+                </svg>
+              </button>
 
-            <!-- Aspect Ratio (Fit / Fill / Stretch) -->
-            <button id="aspectRatioBtn" class="tool-action-btn" title="Toggle Aspect Ratio">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
-                <path d="M7 15l5-5 5 5"></path>
-              </svg>
-              <span id="aspectRatioLabel">Fit</span>
-            </button>
+              <!-- Rewind 10s -->
+              <button id="rewind10Btn" class="ctrl-btn" title="Rewind 10s (Left Arrow)" aria-label="Rewind 10 seconds">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 4v6h6"></path>
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                  <text x="12" y="15" font-size="8" font-family="sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle" stroke="none">10</text>
+                </svg>
+              </button>
 
-            <!-- Direct Download Button -->
-            <a id="downloadActionBtn" href="#" target="_blank" class="tool-action-btn highlight-btn" title="Direct Download">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              <span>Download</span>
-            </a>
+              <!-- Forward 10s -->
+              <button id="forward10Btn" class="ctrl-btn" title="Forward 10s (Right Arrow)" aria-label="Forward 10 seconds">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"></path>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                  <text x="12" y="15" font-size="8" font-family="sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle" stroke="none">10</text>
+                </svg>
+              </button>
 
-            <!-- Share Link Button -->
-            <button id="copyLinkBtn" class="tool-action-btn" title="Share Video">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="18" cy="5" r="3"></circle>
-                <circle cx="6" cy="12" r="3"></circle>
-                <circle cx="18" cy="19" r="3"></circle>
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-              </svg>
-              <span>Share</span>
-            </button>
+              <!-- Volume & Mute -->
+              <div class="volume-control-group">
+                <button id="muteBtn" class="ctrl-btn" title="Mute/Unmute (M)" aria-label="Mute or Unmute">
+                  <svg id="volumeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                  </svg>
+                </button>
+                <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="1" class="volume-slider" aria-label="Volume Slider" />
+              </div>
+
+              <!-- Time Counter -->
+              <div class="time-display">
+                <span id="currentTime">00:00</span>
+                <span class="time-separator">/</span>
+                <span id="durationTime">00:00</span>
+              </div>
+            </div>
+
+            <!-- Right Controls: Boost, Fit, Speed, Fullscreen -->
+            <div class="controls-right">
+              <!-- Audio Boost (100% -> 150% -> 200% -> 300%) -->
+              <button id="audioBoostBtn" class="ctrl-pill-btn" title="Boost audio up to 300% (B)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                </svg>
+                <span id="audioBoostLabel">Boost: 100%</span>
+              </button>
+
+              <!-- Aspect Ratio: Fit / Fill / Stretch -->
+              <button id="aspectRatioBtn" class="ctrl-pill-btn" title="Toggle Aspect Ratio">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                  <path d="M7 15l5-5 5 5"></path>
+                </svg>
+                <span id="aspectRatioLabel">Fit</span>
+              </button>
+
+              <!-- Speed Selector: 1.0x / 2.0x / 4.0x -->
+              <button id="speedBtn" class="ctrl-pill-btn" title="Playback Speed">
+                <span>⚡</span>
+                <span id="speedLabel">1.0x</span>
+              </button>
+
+              <!-- Fullscreen -->
+              <button id="fullscreenBtn" class="ctrl-btn" title="Fullscreen (F)" aria-label="Toggle Fullscreen">
+                <svg id="fullscreenIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
+      </div>
 
-        <!-- 6. Developer & Channel Attribution (Only Keep What Was Requested!) -->
+      <!-- VIDEO METADATA & FOOTER (Clean & Under the Player) -->
+      <div class="video-info-section">
+        <h1 id="videoTitle" class="video-main-title">Loading Stream...</h1>
+        <div class="video-meta-badges">
+          <span class="meta-badge-red" id="formatBadge">FULL HD 1080P</span>
+          <span class="meta-badge-size" id="fileSize"></span>
+        </div>
+
         <div class="video-creator-footer">
           <span>👨‍💻 <b>Creator:</b> Developed by <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer">KUMAWAT⁰⁰⁷ PRINTs</a></span>
           <span class="sep">•</span>

@@ -1,11 +1,10 @@
-// TeravidsPlay — Official YouTube-Style Cinema Player Engine
-// Features: Dual-View Architecture (Home Welcome vs Player),
-// Mandatory Channel Lock Gate, Web Audio API 300% Boost,
-// 2X / 4X Ultra-Turbo Long-Press Speed, Double-Tap Seek,
-// Aspect Ratio Switcher, and Instant CDN Video Playback.
+// TeravidsPlay — Official Integrated Cinema Player Engine
+// Features: All Controls Inside Viewport, Web Audio 300% Boost,
+// YouTube Red Scrubber, 4X Ultra Turbo Long-Press, Auto-Channel Unlock from Telegram,
+// HLS + Direct + Edge Proxy Multi-Tier Decoder.
 
 document.addEventListener('DOMContentLoaded', () => {
-  // 1. Telegram WebApp Integration
+  // 1. Telegram WebApp Integration & Channel Auto-Unlock
   const tg = window.Telegram?.WebApp;
   if (tg) {
     tg.ready();
@@ -22,12 +21,49 @@ document.addEventListener('DOMContentLoaded', () => {
   const homeInputForm = document.getElementById('homeInputForm');
   const homeUrlInput = document.getElementById('homeUrlInput');
 
-  const videoElement = document.getElementById('player');
   const playerContainer = document.getElementById('playerContainer');
+  const videoElement = document.getElementById('player');
+  const playerTopBar = document.getElementById('playerTopBar');
+  const playerBottomBar = document.getElementById('playerBottomBar');
+  const centerPlayBtn = document.getElementById('centerPlayBtn');
+  const centerPlayIcon = document.getElementById('centerPlayIcon');
   const loader = document.getElementById('loader');
   const loaderText = document.getElementById('loaderText');
-  const unmuteOverlay = document.getElementById('unmuteOverlay');
-  const unmuteBtn = document.getElementById('unmuteBtn');
+
+  // Top Bar Elements
+  const topVideoTitle = document.getElementById('topVideoTitle');
+  const topFormatBadge = document.getElementById('topFormatBadge');
+  const topDownloadBtn = document.getElementById('topDownloadBtn');
+  const topShareBtn = document.getElementById('topShareBtn');
+
+  // Bottom Controls Elements
+  const scrubberContainer = document.getElementById('scrubberContainer');
+  const scrubberBuffer = document.getElementById('scrubberBuffer');
+  const scrubberProgress = document.getElementById('scrubberProgress');
+  const scrubberThumb = document.getElementById('scrubberThumb');
+  const scrubberTooltip = document.getElementById('scrubberTooltip');
+
+  const playBtn = document.getElementById('playBtn');
+  const playIcon = document.getElementById('playIcon');
+  const rewind10Btn = document.getElementById('rewind10Btn');
+  const forward10Btn = document.getElementById('forward10Btn');
+  const muteBtn = document.getElementById('muteBtn');
+  const volumeIcon = document.getElementById('volumeIcon');
+  const volumeSlider = document.getElementById('volumeSlider');
+  const currentTimeElem = document.getElementById('currentTime');
+  const durationTimeElem = document.getElementById('durationTime');
+
+  // Right Integrated Pill Controls
+  const audioBoostBtn = document.getElementById('audioBoostBtn');
+  const audioBoostLabel = document.getElementById('audioBoostLabel');
+  const aspectRatioBtn = document.getElementById('aspectRatioBtn');
+  const aspectRatioLabel = document.getElementById('aspectRatioLabel');
+  const speedBtn = document.getElementById('speedBtn');
+  const speedLabel = document.getElementById('speedLabel');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const fullscreenIcon = document.getElementById('fullscreenIcon');
+
+  // Overlays & Gestures
   const speedOverlay = document.getElementById('speedOverlay');
   const speedOverlayIcon = document.getElementById('speedOverlayIcon');
   const speedOverlayText = document.getElementById('speedOverlayText');
@@ -41,33 +77,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const rippleRight = document.getElementById('rippleRight');
   const resumeToast = document.getElementById('resumeToast');
   const resumeToastText = document.getElementById('resumeToastText');
+  const channelGateOverlay = document.getElementById('channelGateOverlay');
+  const gateJoinBtn = document.getElementById('gateJoinBtn');
+  const gateUnlockBtn = document.getElementById('gateUnlockBtn');
   const errorOverlay = document.getElementById('errorOverlay');
   const errorHeading = document.getElementById('errorHeading');
   const errorMsg = document.getElementById('errorMsg');
   const retryBtn = document.getElementById('retryBtn');
   const externalDownloadBtn = document.getElementById('externalDownloadBtn');
 
-  // Video Toolbar Elements
+  // Metadata below video
   const videoTitleElem = document.getElementById('videoTitle');
   const formatBadgeElem = document.getElementById('formatBadge');
   const fileSizeElem = document.getElementById('fileSize');
-  const audioBoostBtn = document.getElementById('audioBoostBtn');
-  const audioBoostLabel = document.getElementById('audioBoostLabel');
-  const aspectRatioBtn = document.getElementById('aspectRatioBtn');
-  const aspectRatioLabel = document.getElementById('aspectRatioLabel');
-  const downloadActionBtn = document.getElementById('downloadActionBtn');
-  const copyLinkBtn = document.getElementById('copyLinkBtn');
+  const ambientCanvas = document.getElementById('ambientCanvas');
 
-  // Mandatory Channel Lock Gate Elements
-  const channelGateOverlay = document.getElementById('channelGateOverlay');
-  const gateJoinBtn = document.getElementById('gateJoinBtn');
-  const gateUnlockBtn = document.getElementById('gateUnlockBtn');
-
-  // Disable context menu on player
-  if (playerContainer) playerContainer.addEventListener('contextmenu', (e) => e.preventDefault());
-  if (videoElement) videoElement.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  // Helper: Safe URL Decode
+  // Helper Functions
   function safeDecode(val, fallback = '') {
     if (!val) return fallback;
     try {
@@ -78,46 +103,77 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function formatTime(seconds) {
-    const min = Math.floor(seconds / 60);
-    const sec = Math.floor(seconds % 60);
-    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+    if (isNaN(seconds) || seconds < 0) return '00:00';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) {
+      return `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
   }
 
   function showToast(text) {
     if (resumeToast && resumeToastText) {
       resumeToastText.textContent = text;
       resumeToast.style.display = 'block';
-      setTimeout(() => { resumeToast.style.display = 'none'; }, 2600);
+      setTimeout(() => { resumeToast.style.display = 'none'; }, 2400);
     }
   }
 
-  // 3. Parse Parameters & View Toggle
+  // 3. Parse Parameters & Telegram Auto-Unlock
   const urlParams = new URLSearchParams(window.location.search);
   let vId = urlParams.get('v') || urlParams.get('s') || '';
   let rawStream = urlParams.get('stream') || '';
   const rawTitle = urlParams.get('title') || '';
   const rawSize = urlParams.get('size') || '';
+  const rawThumb = urlParams.get('thumb') || '';
+  const fromTg = urlParams.get('tg') === '1' || urlParams.get('from') === 'tg' || Boolean(tg?.initData);
 
   if (rawStream.startsWith('b64:')) {
-    try {
-      rawStream = atob(rawStream.slice(4));
-    } catch (e) {}
+    try { rawStream = atob(rawStream.slice(4)); } catch (e) {}
   }
 
   let streamUrl = safeDecode(rawStream);
   const cleanTitle = safeDecode(rawTitle);
   const cleanSize = safeDecode(rawSize);
+  const cleanThumb = safeDecode(rawThumb);
 
-  // Check if we have active media
+  // Auto-Unlock Telegram Gate if user came from Telegram channel
+  const UNLOCK_KEY = 'teravids_channel_unlocked';
+  if (fromTg) {
+    localStorage.setItem(UNLOCK_KEY, 'true');
+  }
+  let isChannelUnlocked = localStorage.getItem(UNLOCK_KEY) === 'true';
+
+  function checkChannelGate() {
+    if (isChannelUnlocked) {
+      if (channelGateOverlay) channelGateOverlay.style.display = 'none';
+    } else {
+      if (channelGateOverlay) channelGateOverlay.style.display = 'flex';
+    }
+  }
+
+  checkChannelGate();
+
+  if (gateUnlockBtn) {
+    gateUnlockBtn.addEventListener('click', () => {
+      isChannelUnlocked = true;
+      localStorage.setItem(UNLOCK_KEY, 'true');
+      if (channelGateOverlay) channelGateOverlay.style.display = 'none';
+      showToast('🎉 Video Unlocked!');
+      videoElement.play().catch(() => {});
+    });
+  }
+
+  // View Switching
   const hasMedia = Boolean(vId || streamUrl);
 
   function activateHomeView() {
     if (homePage) homePage.style.display = 'flex';
     if (playerView) playerView.style.display = 'none';
     document.title = 'TeravidsPlay — Ad-Free Cinema Cloud Video Player';
-    if (videoElement && !videoElement.paused) {
-      videoElement.pause();
-    }
+    if (videoElement && !videoElement.paused) videoElement.pause();
   }
 
   function activatePlayerView() {
@@ -128,24 +184,28 @@ document.addEventListener('DOMContentLoaded', () => {
   if (hasMedia) {
     activatePlayerView();
     if (cleanTitle) {
+      topVideoTitle.textContent = cleanTitle;
       videoTitleElem.textContent = cleanTitle;
       document.title = `${cleanTitle} — TeravidsPlay`;
     } else {
+      topVideoTitle.textContent = 'TeraBox Video';
       videoTitleElem.textContent = 'Loading video stream...';
-      document.title = 'TeravidsPlay — High-Speed Cloud Stream';
+      document.title = 'TeravidsPlay — Cinema Stream';
     }
 
     if (cleanSize) {
       fileSizeElem.textContent = `📦 ${cleanSize}`;
       fileSizeElem.style.display = 'inline';
-    } else {
-      fileSizeElem.style.display = 'none';
+    }
+
+    if (cleanThumb) {
+      videoElement.poster = cleanThumb;
     }
   } else {
     activateHomeView();
   }
 
-  // 4. Home Page Input Handler (Paste link -> Instant Stream)
+  // Paste Link on Home Page
   if (homeInputForm && homeUrlInput) {
     homeInputForm.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -154,13 +214,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let extractedId = '';
       const m1 = val.match(/\/s\/([a-zA-Z0-9_-]+)/);
-      if (m1) {
-        extractedId = m1[1];
-      } else if (val.includes('surl=')) {
-        extractedId = val.split('surl=')[1].split('&')[0];
-      } else if (/^[a-zA-Z0-9_-]{15,35}$/.test(val)) {
-        extractedId = val;
-      }
+      if (m1) extractedId = m1[1];
+      else if (val.includes('surl=')) extractedId = val.split('surl=')[1].split('&')[0];
+      else if (/^[a-zA-Z0-9_-]{15,35}$/.test(val)) extractedId = val;
 
       activatePlayerView();
 
@@ -176,47 +232,174 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 5. Mandatory Telegram Channel Membership Gate
-  const UNLOCK_KEY = 'teravids_channel_unlocked';
-  let isChannelUnlocked = localStorage.getItem(UNLOCK_KEY) === 'true';
+  // 4. Auto-Hiding Controls Engine
+  let controlsTimeout = null;
 
-  function checkChannelGate() {
-    if (isChannelUnlocked) {
-      if (channelGateOverlay) channelGateOverlay.style.display = 'none';
-    } else {
-      if (channelGateOverlay) channelGateOverlay.style.display = 'flex';
+  function showControls() {
+    playerContainer.classList.remove('controls-hidden');
+    clearTimeout(controlsTimeout);
+    if (!videoElement.paused) {
+      controlsTimeout = setTimeout(() => {
+        playerContainer.classList.add('controls-hidden');
+      }, 3200);
     }
   }
 
-  checkChannelGate();
+  playerContainer.addEventListener('mousemove', showControls);
+  playerContainer.addEventListener('touchstart', showControls, { passive: true });
+  playerContainer.addEventListener('click', (e) => {
+    // If click was on a button or scrubber, don't toggle play/pause
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container')) return;
+    togglePlay();
+  });
 
-  if (gateJoinBtn) {
-    gateJoinBtn.addEventListener('click', () => {
-      if (gateUnlockBtn) {
-        gateUnlockBtn.style.animation = 'pulse 1s infinite alternate';
-      }
+  // 5. Play / Pause Control
+  function updatePlayIcons() {
+    const isPlaying = !videoElement.paused;
+    if (isPlaying) {
+      playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+      centerPlayBtn.classList.add('hidden');
+    } else {
+      playIcon.innerHTML = '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
+      centerPlayIcon.innerHTML = '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
+      centerPlayBtn.classList.remove('hidden');
+      showControls();
+    }
+  }
+
+  function togglePlay() {
+    if (videoElement.paused) {
+      videoElement.play().catch(() => {});
+    } else {
+      videoElement.pause();
+    }
+    updatePlayIcons();
+  }
+
+  if (playBtn) playBtn.addEventListener('click', togglePlay);
+  if (centerPlayBtn) centerPlayBtn.addEventListener('click', togglePlay);
+  videoElement.addEventListener('play', updatePlayIcons);
+  videoElement.addEventListener('pause', updatePlayIcons);
+
+  // 6. Rewind & Fast Forward (10s)
+  if (rewind10Btn) {
+    rewind10Btn.addEventListener('click', () => {
+      videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
+      showRipple('left');
     });
   }
 
-  if (gateUnlockBtn) {
-    gateUnlockBtn.addEventListener('click', () => {
-      isChannelUnlocked = true;
-      localStorage.setItem(UNLOCK_KEY, 'true');
-      if (channelGateOverlay) {
-        channelGateOverlay.style.transition = 'opacity 0.3s ease';
-        channelGateOverlay.style.opacity = '0';
-        setTimeout(() => {
-          channelGateOverlay.style.display = 'none';
-        }, 300);
-      }
-      showToast('🎉 Channel Verified! Video Unlocked!');
-      if (videoElement && videoElement.src) {
-        videoElement.play().catch(() => {});
-      }
+  if (forward10Btn) {
+    forward10Btn.addEventListener('click', () => {
+      videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
+      showRipple('right');
     });
   }
 
-  // 6. Audio Booster (100% -> 150% -> 200% -> 300%)
+  function showRipple(dir) {
+    if (dir === 'left' && rippleLeft) {
+      rippleLeft.style.display = 'flex';
+      setTimeout(() => { rippleLeft.style.display = 'none'; }, 380);
+    } else if (dir === 'right' && rippleRight) {
+      rippleRight.style.display = 'flex';
+      setTimeout(() => { rippleRight.style.display = 'none'; }, 380);
+    }
+  }
+
+  // 7. Interactive Red Scrubber
+  let isScrubbing = false;
+
+  function updateScrubber() {
+    if (!videoElement.duration || isScrubbing) return;
+    const progress = (videoElement.currentTime / videoElement.duration) * 100;
+    scrubberProgress.style.width = `${progress}%`;
+    scrubberThumb.style.left = `${progress}%`;
+    currentTimeElem.textContent = formatTime(videoElement.currentTime);
+    durationTimeElem.textContent = formatTime(videoElement.duration);
+
+    // Update Buffer
+    if (videoElement.buffered.length > 0) {
+      for (let i = videoElement.buffered.length - 1; i >= 0; i--) {
+        if (videoElement.buffered.start(i) <= videoElement.currentTime) {
+          const bufferEnd = videoElement.buffered.end(i);
+          const bufferPct = (bufferEnd / videoElement.duration) * 100;
+          scrubberBuffer.style.width = `${Math.min(100, bufferPct)}%`;
+          break;
+        }
+      }
+    }
+  }
+
+  videoElement.addEventListener('timeupdate', updateScrubber);
+  videoElement.addEventListener('loadedmetadata', () => {
+    durationTimeElem.textContent = formatTime(videoElement.duration);
+    checkResume();
+  });
+
+  function seekToPosition(e) {
+    const rect = scrubberContainer.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const pct = clickX / rect.width;
+    videoElement.currentTime = pct * videoElement.duration;
+    scrubberProgress.style.width = `${pct * 100}%`;
+    scrubberThumb.style.left = `${pct * 100}%`;
+  }
+
+  scrubberContainer.addEventListener('mousedown', (e) => {
+    isScrubbing = true;
+    seekToPosition(e);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (isScrubbing) seekToPosition(e);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isScrubbing) isScrubbing = false;
+  });
+
+  scrubberContainer.addEventListener('mousemove', (e) => {
+    const rect = scrubberContainer.getBoundingClientRect();
+    const hoverX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const pct = hoverX / rect.width;
+    if (videoElement.duration) {
+      scrubberTooltip.textContent = formatTime(pct * videoElement.duration);
+      scrubberTooltip.style.left = `${hoverX}px`;
+      scrubberTooltip.style.display = 'block';
+    }
+  });
+
+  scrubberContainer.addEventListener('mouseleave', () => {
+    scrubberTooltip.style.display = 'none';
+  });
+
+  // 8. Volume & Mute Controls
+  function updateVolumeIcon() {
+    if (videoElement.muted || videoElement.volume === 0) {
+      volumeIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line>';
+    } else if (videoElement.volume < 0.5) {
+      volumeIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>';
+    } else {
+      volumeIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>';
+    }
+  }
+
+  if (muteBtn) {
+    muteBtn.addEventListener('click', () => {
+      videoElement.muted = !videoElement.muted;
+      updateVolumeIcon();
+    });
+  }
+
+  if (volumeSlider) {
+    volumeSlider.addEventListener('input', (e) => {
+      videoElement.volume = parseFloat(e.target.value);
+      videoElement.muted = false;
+      updateVolumeIcon();
+    });
+  }
+
+  // 9. Web Audio API 300% Sound Booster (Integrated Inside Player)
   let audioCtx = null;
   let gainNode = null;
   let audioBoostLevel = 1.0;
@@ -242,18 +425,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function setBoostLevel(level) {
     audioBoostLevel = level;
     initAudioBooster();
-    if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    if (gainNode) {
-      gainNode.gain.value = audioBoostLevel;
-    }
-    if (audioBoostLabel) {
-      audioBoostLabel.textContent = `Boost: ${Math.round(audioBoostLevel * 100)}%`;
-    }
-    if (audioBoostBtn) {
-      audioBoostBtn.classList.toggle('active-boost', audioBoostLevel > 1.0);
-    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if (gainNode) gainNode.gain.value = audioBoostLevel;
+    if (audioBoostLabel) audioBoostLabel.textContent = `Boost: ${Math.round(audioBoostLevel * 100)}%`;
+    if (audioBoostBtn) audioBoostBtn.classList.toggle('active-pill', audioBoostLevel > 1.0);
     showToast(`🔊 Audio Boost: ${Math.round(audioBoostLevel * 100)}%`);
   }
 
@@ -264,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 7. Aspect Ratio Switcher (Fit / Fill / Stretch)
+  // 10. Aspect Ratio Switcher (Fit / Fill / Stretch)
   const aspectModes = ['contain', 'cover', 'fill'];
   const aspectLabels = ['Fit', 'Fill', 'Stretch'];
   let aspectIdx = 0;
@@ -278,22 +453,47 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 8. YouTube-Style Ultra-Long Press: 2X & 4X Turbo Speed
-  let plyrInstance = null;
-  let hlsInstance = null;
-  let baseSpeed = 1.0;
-  let isFastForwarding = false;
+  // 11. Playback Speed Selector (0.75x -> 1.0x -> 1.25x -> 1.5x -> 2.0x -> 4.0x)
+  const speedOptions = [0.75, 1.0, 1.25, 1.5, 2.0, 4.0];
+  let speedIdx = 1;
+
+  if (speedBtn && speedLabel) {
+    speedBtn.addEventListener('click', () => {
+      speedIdx = (speedIdx + 1) % speedOptions.length;
+      const spd = speedOptions[speedIdx];
+      videoElement.playbackRate = spd;
+      speedLabel.textContent = `${spd}x`;
+      showToast(`⚡ Speed: ${spd}x`);
+    });
+  }
+
+  // 12. Fullscreen Toggle
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      if (playerContainer.requestFullscreen) playerContainer.requestFullscreen();
+      else if (videoElement.webkitEnterFullscreen) videoElement.webkitEnterFullscreen();
+      fullscreenIcon.innerHTML = '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>';
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      fullscreenIcon.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>';
+    }
+  }
+
+  if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+  // 13. Ultra Long-Press: 2X Speed & 4X Turbo Speed
   let pressTimer2x = null;
   let pressTimer4x = null;
+  let isFastForwarding = false;
+  let originalSpeed = 1.0;
 
   function startLongPress(e) {
-    if (e.target.closest('.plyr__controls') || e.target.closest('button') || e.target.closest('a') || e.target.closest('.channel-gate-card')) return;
-    
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container')) return;
+
     // Stage 1: Hold 350ms -> 2X Speed
     pressTimer2x = setTimeout(() => {
       isFastForwarding = true;
-      baseSpeed = videoElement.playbackRate || 1.0;
-      if (baseSpeed > 1.0 && baseSpeed < 2.0) baseSpeed = 1.0;
+      originalSpeed = videoElement.playbackRate || 1.0;
       videoElement.playbackRate = 2.0;
       if (speedOverlay) {
         if (speedOverlayIcon) speedOverlayIcon.textContent = '⚡';
@@ -302,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }, 350);
 
-    // Stage 2: Ultra Long Press past 1400ms -> 4X Ultra Turbo Speed
+    // Stage 2: Ultra Hold past 1400ms -> 4X Ultra Turbo Speed
     pressTimer4x = setTimeout(() => {
       if (!isFastForwarding) return;
       videoElement.playbackRate = 4.0;
@@ -319,127 +519,160 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(pressTimer4x);
     if (isFastForwarding) {
       isFastForwarding = false;
-      videoElement.playbackRate = baseSpeed || 1.0;
+      videoElement.playbackRate = originalSpeed || 1.0;
       if (speedOverlay) speedOverlay.style.display = 'none';
     }
   }
 
-  if (playerContainer) {
-    playerContainer.addEventListener('mousedown', startLongPress);
-    window.addEventListener('mouseup', stopLongPress);
-    playerContainer.addEventListener('touchstart', startLongPress, { passive: true });
-    window.addEventListener('touchend', stopLongPress);
-  }
+  playerContainer.addEventListener('mousedown', startLongPress);
+  window.addEventListener('mouseup', stopLongPress);
+  playerContainer.addEventListener('touchstart', startLongPress, { passive: true });
+  window.addEventListener('touchend', stopLongPress);
 
-  // 9. Double Tap 10s Seek
+  // 14. Double-Tap Seek (Mobile & Touch)
   let lastTapTime = 0;
   let tapTimeout = null;
 
-  if (playerContainer) {
-    playerContainer.addEventListener('click', (e) => {
-      if (e.target.closest('.plyr__controls') || e.target.closest('button') || e.target.closest('.channel-gate-card')) return;
-      const now = Date.now();
-      const rect = playerContainer.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const isRightSide = clickX > rect.width / 2;
+  playerContainer.addEventListener('click', (e) => {
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container')) return;
+    const now = Date.now();
+    const rect = playerContainer.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const isRightSide = clickX > rect.width / 2;
 
-      if (now - lastTapTime < 320) {
-        clearTimeout(tapTimeout);
-        if (isRightSide) {
-          videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
-          if (rippleRight) {
-            rippleRight.style.display = 'flex';
-            setTimeout(() => { rippleRight.style.display = 'none'; }, 400);
-          }
-        } else {
-          videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
-          if (rippleLeft) {
-            rippleLeft.style.display = 'flex';
-            setTimeout(() => { rippleLeft.style.display = 'none'; }, 400);
-          }
-        }
-        lastTapTime = 0;
+    if (now - lastTapTime < 300) {
+      clearTimeout(tapTimeout);
+      if (isRightSide) {
+        videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
+        showRipple('right');
       } else {
-        lastTapTime = now;
-        tapTimeout = setTimeout(() => { lastTapTime = 0; }, 340);
+        videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
+        showRipple('left');
       }
-    });
-  }
+      lastTapTime = 0;
+    } else {
+      lastTapTime = now;
+      tapTimeout = setTimeout(() => { lastTapTime = 0; }, 320);
+    }
+  });
 
-  // 10. Swipe Gestures for Brightness & Volume
+  // 15. Swipe Gestures for Brightness & Volume
   let touchStartX = 0;
   let touchStartY = 0;
   let isSwiping = false;
   let activeHud = null;
   let currentBrightness = 1.0;
 
-  if (playerContainer) {
-    playerContainer.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      touchStartX = e.touches[0].clientX;
+  playerContainer.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    isSwiping = false;
+    activeHud = null;
+  }, { passive: true });
+
+  playerContainer.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 1) return;
+    const deltaX = e.touches[0].clientX - touchStartX;
+    const deltaY = touchStartY - e.touches[0].clientY;
+
+    if (!isSwiping && Math.abs(deltaY) > 15 && Math.abs(deltaY) > Math.abs(deltaX) * 1.5) {
+      isSwiping = true;
+      const rect = playerContainer.getBoundingClientRect();
+      activeHud = (touchStartX - rect.left) < rect.width / 2 ? 'brightness' : 'volume';
+    }
+
+    if (isSwiping) {
+      const step = deltaY / 200;
       touchStartY = e.touches[0].clientY;
+
+      if (activeHud === 'brightness') {
+        currentBrightness = Math.max(0.2, Math.min(1.5, currentBrightness + step));
+        videoElement.style.filter = `brightness(${currentBrightness})`;
+        if (brightnessBar) brightnessBar.style.height = `${Math.round((currentBrightness / 1.5) * 100)}%`;
+        if (brightnessText) brightnessText.textContent = `${Math.round((currentBrightness / 1.5) * 100)}%`;
+        if (brightnessHud) brightnessHud.style.display = 'flex';
+      } else if (activeHud === 'volume') {
+        const newVol = Math.max(0, Math.min(1, videoElement.volume + step));
+        videoElement.volume = newVol;
+        if (volumeBar) volumeBar.style.height = `${Math.round(newVol * 100)}%`;
+        if (volumeText) volumeText.textContent = `${Math.round(newVol * 100)}%`;
+        if (volumeHud) volumeHud.style.display = 'flex';
+        updateVolumeIcon();
+      }
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchend', () => {
+    if (isSwiping) {
+      setTimeout(() => {
+        if (brightnessHud) brightnessHud.style.display = 'none';
+        if (volumeHud) volumeHud.style.display = 'none';
+      }, 350);
       isSwiping = false;
-      activeHud = null;
-    }, { passive: true });
+    }
+  });
 
-    playerContainer.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 1) return;
-      const deltaX = e.touches[0].clientX - touchStartX;
-      const deltaY = touchStartY - e.touches[0].clientY;
+  // 16. Keyboard Shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        togglePlay();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
+        showRipple('left');
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
+        showRipple('right');
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        videoElement.volume = Math.min(1, videoElement.volume + 0.1);
+        showToast(`🔊 Volume: ${Math.round(videoElement.volume * 100)}%`);
+        updateVolumeIcon();
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        videoElement.volume = Math.max(0, videoElement.volume - 0.1);
+        showToast(`🔊 Volume: ${Math.round(videoElement.volume * 100)}%`);
+        updateVolumeIcon();
+        break;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        toggleFullscreen();
+        break;
+      case 'm':
+      case 'M':
+        e.preventDefault();
+        videoElement.muted = !videoElement.muted;
+        updateVolumeIcon();
+        break;
+      case 'b':
+      case 'B':
+        e.preventDefault();
+        if (audioBoostBtn) audioBoostBtn.click();
+        break;
+    }
+  });
 
-      if (!isSwiping && Math.abs(deltaY) > 12 && Math.abs(deltaY) > Math.abs(deltaX) * 1.5) {
-        isSwiping = true;
-        const rect = playerContainer.getBoundingClientRect();
-        activeHud = (touchStartX - rect.left) < rect.width / 2 ? 'brightness' : 'volume';
-      }
-
-      if (isSwiping) {
-        const step = deltaY / 220;
-        touchStartY = e.touches[0].clientY;
-
-        if (activeHud === 'brightness') {
-          currentBrightness = Math.max(0.2, Math.min(1.5, currentBrightness + step));
-          videoElement.style.filter = `brightness(${currentBrightness})`;
-          if (brightnessBar) brightnessBar.style.height = `${Math.round((currentBrightness / 1.5) * 100)}%`;
-          if (brightnessText) brightnessText.textContent = `${Math.round((currentBrightness / 1.5) * 100)}%`;
-          if (brightnessHud) brightnessHud.style.display = 'flex';
-        } else if (activeHud === 'volume') {
-          const newVol = Math.max(0, Math.min(1, videoElement.volume + step));
-          videoElement.volume = newVol;
-          if (volumeBar) volumeBar.style.height = `${Math.round(newVol * 100)}%`;
-          if (volumeText) volumeText.textContent = `${Math.round(newVol * 100)}%`;
-          if (volumeHud) volumeHud.style.display = 'flex';
-        }
-      }
-    }, { passive: true });
-
-    window.addEventListener('touchend', () => {
-      if (isSwiping) {
-        setTimeout(() => {
-          if (brightnessHud) brightnessHud.style.display = 'none';
-          if (volumeHud) volumeHud.style.display = 'none';
-        }, 400);
-        isSwiping = false;
-      }
-    });
-  }
-
-  // 11. Ambient Glow Canvas
-  const ambientCanvas = document.getElementById('ambientCanvas');
+  // 17. Ambient Glow Canvas
   let ambientCtx = null;
   let ambientRaf = null;
 
   if (ambientCanvas) {
-    try {
-      ambientCtx = ambientCanvas.getContext('2d', { willReadFrequently: false });
-    } catch (e) {}
+    try { ambientCtx = ambientCanvas.getContext('2d', { willReadFrequently: false }); } catch (e) {}
   }
 
   function drawAmbient() {
     if (!videoElement.paused && !videoElement.ended && ambientCtx) {
-      try {
-        ambientCtx.drawImage(videoElement, 0, 0, ambientCanvas.width, ambientCanvas.height);
-      } catch (e) {}
+      try { ambientCtx.drawImage(videoElement, 0, 0, ambientCanvas.width, ambientCanvas.height); } catch (e) {}
     }
     ambientRaf = requestAnimationFrame(drawAmbient);
   }
@@ -452,7 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ambientRaf = null;
   });
 
-  // 12. Auto-Resume from Last Position
+  // 18. Auto-Resume from Last Position
   const storageKey = `teravids_pos_${vId || streamUrl.slice(-25) || 'default'}`;
 
   function checkResume() {
@@ -470,91 +703,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 13. Initialize Plyr Video Player (YouTube Styling)
-  function initPlyr() {
-    if (plyrInstance) return plyrInstance;
+  // 19. Multi-Tier Stream Loader (Direct -> No-CORS -> Edge Proxy -> HLS)
+  let hlsInstance = null;
+  let retryCount = 0;
 
-    plyrInstance = new Plyr(videoElement, {
-      controls: [
-        'play-large',
-        'play',
-        'progress',
-        'current-time',
-        'duration',
-        'mute',
-        'volume',
-        'settings',
-        'pip',
-        'fullscreen',
-      ],
-      settings: ['speed'],
-      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2, 4] },
-      storage: { enabled: false },
-      keyboard: { focused: true, global: true },
-      seekTime: 10,
-      tooltips: { controls: true, seek: true },
-    });
-
-    videoElement.addEventListener('canplay', () => {
-      loader.classList.add('hidden');
-    });
-
-    videoElement.addEventListener('playing', () => {
-      loader.classList.add('hidden');
-      if (videoElement.muted) {
-        if (unmuteOverlay) unmuteOverlay.style.display = 'block';
-      } else {
-        if (unmuteOverlay) unmuteOverlay.style.display = 'none';
-      }
-    });
-
-    videoElement.addEventListener('waiting', () => {
-      loaderText.textContent = 'Buffering stream...';
-      loader.classList.remove('hidden');
-    });
-
-    videoElement.addEventListener('error', (e) => {
-      console.error('HTML5 video error:', e);
-      const currentSrc = videoElement.currentSrc || videoElement.src;
-      if (currentSrc && !currentSrc.includes('workers.dev') && !currentSrc.startsWith('blob:') && !currentSrc.startsWith('data:')) {
-        const proxiedUrl = `https://teravidsplay.proxyking.workers.dev/?url=${encodeURIComponent(currentSrc)}`;
-        console.info('[TeravidsPlay] Activating streaming proxy fallback...');
-        loaderText.textContent = 'Activating edge proxy...';
-        loader.classList.remove('hidden');
-        videoElement.src = proxiedUrl;
-        videoElement.load();
-        if (isChannelUnlocked) videoElement.play().catch(() => {});
-        return;
-      }
-      showError('Playback Interrupted', 'Unable to decode video stream. The link may have expired or is blocked.');
-    });
-
-    return plyrInstance;
-  }
-
-  // 14. Stream Loader
   function loadStream(url, poster = '') {
     if (!url) {
       showError('Missing Stream URL', 'No valid stream URL was provided.');
       return;
     }
 
-    if (poster) {
-      videoElement.poster = poster;
-    }
+    if (poster) videoElement.poster = poster;
 
     loader.classList.remove('hidden');
     loaderText.textContent = 'Connecting high-speed stream...';
     errorOverlay.style.display = 'none';
 
-    if (downloadActionBtn) downloadActionBtn.href = url;
+    if (topDownloadBtn) topDownloadBtn.href = url;
     if (externalDownloadBtn) externalDownloadBtn.href = url;
 
     const isM3U8 = url.includes('.m3u8');
-    if (formatBadgeElem) {
-      formatBadgeElem.textContent = isM3U8 ? 'HLS ADAPTIVE' : 'FULL HD 1080P';
-      formatBadgeElem.style.display = 'inline-block';
-    }
+    if (topFormatBadge) topFormatBadge.textContent = isM3U8 ? 'HLS ADAPTIVE' : '1080P HD';
+    if (formatBadgeElem) formatBadgeElem.textContent = isM3U8 ? 'HLS ADAPTIVE' : 'FULL HD 1080P';
 
     if (hlsInstance) {
       hlsInstance.destroy();
@@ -567,15 +737,8 @@ document.addEventListener('DOMContentLoaded', () => {
       hlsInstance.attachMedia(videoElement);
 
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-        initPlyr();
-        checkResume();
-        if (isChannelUnlocked) {
-          videoElement.play().catch(() => {
-            videoElement.muted = true;
-            videoElement.play().catch(() => {});
-            if (unmuteOverlay) unmuteOverlay.style.display = 'block';
-          });
-        }
+        loader.classList.add('hidden');
+        if (isChannelUnlocked) videoElement.play().catch(() => {});
       });
 
       hlsInstance.on(Hls.Events.ERROR, (event, data) => {
@@ -595,18 +758,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     } else {
+      // Direct MP4 playback
       videoElement.src = url;
-      initPlyr();
-      videoElement.addEventListener('loadedmetadata', checkResume, { once: true });
-      if (isChannelUnlocked) {
-        videoElement.play().catch(() => {
-          videoElement.muted = true;
-          videoElement.play().catch(() => {});
-          if (unmuteOverlay) unmuteOverlay.style.display = 'block';
-        });
-      }
+      videoElement.load();
+      if (isChannelUnlocked) videoElement.play().catch(() => {});
     }
   }
+
+  videoElement.addEventListener('canplay', () => {
+    loader.classList.add('hidden');
+  });
+
+  videoElement.addEventListener('playing', () => {
+    loader.classList.add('hidden');
+  });
+
+  videoElement.addEventListener('waiting', () => {
+    loaderText.textContent = 'Buffering stream...';
+    loader.classList.remove('hidden');
+  });
+
+  videoElement.addEventListener('error', (e) => {
+    console.error('HTML5 video error:', e);
+    const currentSrc = videoElement.currentSrc || videoElement.src;
+
+    // Retry 1: If direct link failed and hasn't been proxied yet, route via Cloudflare Edge Worker
+    if (currentSrc && !currentSrc.includes('workers.dev') && !currentSrc.startsWith('blob:') && !currentSrc.startsWith('data:') && retryCount === 0) {
+      retryCount++;
+      const proxiedUrl = `https://teravidsplay.proxyking.workers.dev/?url=${encodeURIComponent(currentSrc)}`;
+      console.info('[TeravidsPlay] Retrying via Cloudflare Edge Streaming Proxy...');
+      loaderText.textContent = 'Activating edge streaming proxy...';
+      loader.classList.remove('hidden');
+      videoElement.removeAttribute('crossorigin');
+      videoElement.src = proxiedUrl;
+      videoElement.load();
+      if (isChannelUnlocked) videoElement.play().catch(() => {});
+      return;
+    }
+
+    showError('Playback Interrupted', 'Unable to decode video stream. The link may have expired or is blocked.');
+  });
 
   function showError(heading, message) {
     loader.classList.add('hidden');
@@ -615,12 +806,12 @@ document.addEventListener('DOMContentLoaded', () => {
     errorOverlay.style.display = 'flex';
   }
 
-  // 15. Stream Resolver for TeraBox Short IDs (?v=...)
+  // 20. Video Resolver for TeraBox Short IDs (?v=...)
   async function resolveAndPlay(surl) {
     loader.classList.remove('hidden');
     loaderText.textContent = 'Resolving video details...';
     try {
-      // Try Cloudflare Edge Worker API
+      // 1. Try Cloudflare Edge Worker API
       const workerEndpoint = `https://teravidsplay.proxyking.workers.dev/api/resolve?surl=${encodeURIComponent(surl)}`;
       let res = await fetch(workerEndpoint).catch(() => null);
       let data = null;
@@ -628,7 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
         data = await res.json();
       }
 
-      // Edge resolver fallback
+      // 2. Direct edge resolver fallback
       if (!data || !data.success) {
         const fullTeraUrl = `https://1024terabox.com/s/${surl.startsWith('1') ? surl : '1' + surl}`;
         const directResp = await fetch('https://iteraplay.in/api/videos/import', {
@@ -639,17 +830,18 @@ document.addEventListener('DOMContentLoaded', () => {
             'Origin': 'https://iteraplay.in',
           },
           body: JSON.stringify({ url: fullTeraUrl }),
-        });
-        if (directResp.ok) {
+        }).catch(() => null);
+        if (directResp && directResp.ok) {
           data = await directResp.json();
         }
       }
 
       if (data && data.success && data.videos && data.videos.length > 0) {
         const vid = data.videos[0];
-        const title = vid.title || 'TeraBox Video';
-        const sizeFormatted = vid.size ? `${(vid.size / (1024 * 1024)).toFixed(1)} MB` : '';
+        const title = vid.title || cleanTitle || 'TeraBox Video';
+        const sizeFormatted = vid.size ? `${(vid.size / (1024 * 1024)).toFixed(1)} MB` : cleanSize;
 
+        topVideoTitle.textContent = title;
         videoTitleElem.textContent = title;
         document.title = `${title} — TeravidsPlay`;
 
@@ -658,15 +850,12 @@ document.addEventListener('DOMContentLoaded', () => {
           fileSizeElem.style.display = 'inline';
         }
 
-        if (vid.thumbnailUrl) {
-          videoElement.poster = vid.thumbnailUrl;
-        }
+        const thumb = vid.thumbnailUrl || cleanThumb;
+        if (thumb) videoElement.poster = thumb;
 
-        if (downloadActionBtn) {
-          downloadActionBtn.href = vid.stream_url;
-        }
+        if (topDownloadBtn) topDownloadBtn.href = vid.stream_url;
 
-        loadStream(vid.stream_url, vid.thumbnailUrl || '');
+        loadStream(vid.stream_url, thumb);
         return;
       }
       showError('Video Unavailable', 'Could not resolve stream for this link. It may have expired or is private.');
@@ -675,45 +864,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 16. Button Event Listeners
-  if (retryBtn) {
-    retryBtn.addEventListener('click', () => {
-      if (vId) resolveAndPlay(vId);
-      else if (streamUrl) loadStream(streamUrl);
-    });
-  }
-
-  if (copyLinkBtn) {
-    copyLinkBtn.addEventListener('click', async () => {
-      const shareUrl = vId 
-        ? `${window.location.origin}/?v=${vId}`
-        : window.location.href;
-
+  // 21. Top Bar Share & Download Listeners
+  if (topShareBtn) {
+    topShareBtn.addEventListener('click', async () => {
+      const shareUrl = vId ? `${window.location.origin}/?v=${vId}` : window.location.href;
       if (navigator.share) {
         try {
-          await navigator.share({ title: videoTitleElem.textContent || cleanTitle, url: shareUrl });
+          await navigator.share({ title: topVideoTitle.textContent, url: shareUrl });
           return;
         } catch (err) {}
       }
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(shareUrl);
-        showToast('🔗 Video link copied to clipboard!');
+        showToast('🔗 Video link copied!');
       }
     });
   }
 
-  if (unmuteBtn) {
-    unmuteBtn.addEventListener('click', () => {
-      videoElement.muted = false;
-      if (unmuteOverlay) unmuteOverlay.style.display = 'none';
-      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      retryCount = 0;
+      if (vId) resolveAndPlay(vId);
+      else if (streamUrl) loadStream(streamUrl);
     });
   }
 
-  // 17. Initiate stream if parameter was present
+  // 22. Initiate Playback
   if (vId) {
     resolveAndPlay(vId);
   } else if (streamUrl) {
-    loadStream(streamUrl);
+    loadStream(streamUrl, cleanThumb);
   }
 });

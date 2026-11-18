@@ -85,18 +85,34 @@ def extract_title_hint_from_message(message: types.Message, raw_url: str) -> str
 DEFAULT_POSTER = "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80"
 
 
-def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "") -> tuple[types.InlineKeyboardMarkup, str]:
+def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "", thumb: str = "") -> tuple[types.InlineKeyboardMarkup, str]:
     """Builds direct-to-player inline buttons with vibrant, colorful TOP BEST Design."""
     markup = types.InlineKeyboardMarkup(row_width=1)
 
+    encoded_title = urllib.parse.quote(title) if title else ""
+    encoded_size = urllib.parse.quote(size) if size else ""
+    encoded_thumb = urllib.parse.quote(thumb) if (thumb and thumb.startswith("http")) else ""
+
     if PLAYER_URL and surl:
-        # Clean own domain web player URL: https://teravidsplayer.vercel.app/?v=surl
-        player_link = f"{PLAYER_URL}/?v={surl}"
+        # Clean own domain web player URL with auto-unlock flag & metadata
+        params = [f"v={surl}", "tg=1"]
+        if encoded_title:
+            params.append(f"title={encoded_title}")
+        if encoded_size:
+            params.append(f"size={encoded_size}")
+        if encoded_thumb:
+            params.append(f"thumb={encoded_thumb}")
+        player_link = f"{PLAYER_URL}/?{'&'.join(params)}"
     elif PLAYER_URL:
         encoded_stream = urllib.parse.quote(stream_url)
-        encoded_title = urllib.parse.quote(title)
-        encoded_size = urllib.parse.quote(size)
-        player_link = f"{PLAYER_URL}/?stream={encoded_stream}&title={encoded_title}&size={encoded_size}"
+        params = [f"stream={encoded_stream}", "tg=1"]
+        if encoded_title:
+            params.append(f"title={encoded_title}")
+        if encoded_size:
+            params.append(f"size={encoded_size}")
+        if encoded_thumb:
+            params.append(f"thumb={encoded_thumb}")
+        player_link = f"{PLAYER_URL}/?{'&'.join(params)}"
     else:
         player_link = stream_url
 
@@ -206,6 +222,7 @@ def handle_channel_post(message: types.Message):
         title=title,
         size=size,
         surl=surl,
+        thumb=thumb_url or "",
     )
 
     # 1. Publish sleek media card directly to channel
@@ -306,6 +323,7 @@ def handle_private_post(message: types.Message):
         title=title,
         size=size,
         surl=surl,
+        thumb=thumb_url or "",
     )
 
     channel_posted = False

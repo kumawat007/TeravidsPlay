@@ -1,0 +1,9 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/player/index.html" },
+    { "source": "/style.css", "destination": "/player/style.css" },
+    { "source": "/app.js", "destination": "/player/app.js" },
+    { "source": "/(.*)", "destination": "/player/$1" }
+  ]
+}

@@ -17,7 +17,9 @@ const ALLOWED_TERABOX_HOSTS = [
   "1024tera.com", "1024terabox.com", "4funbox.com",
   "mirrobox.com", "nephobox.com", "freeterabox.com",
   "teraboxlink.com", "tibibox.com", "momerybox.com",
-  "terasharelink.com", "baidupcs.com", "tribox.com"
+  "terasharelink.com", "baidupcs.com", "tribox.com",
+  "dubox.com", "bdydns.com", "baidu.com", "teraboxcdn.com",
+  "iteraplay.in", "playterabox.com", "cloudflarestorage.com"
 ];
 
 function isAllowedProxyUrl(urlString) {
@@ -172,6 +174,35 @@ export default {
           debugLogs.push({ candidate, error: err.message });
         }
       }
+
+      // Secondary Fallback: Query TeraBox shorturlinfo directly
+      const cleanToken = surl.replace(/^.*\/s\//, "").replace("surl=", "").replace(/^1/, "");
+      try {
+        const infoResp = await fetch(`https://1024terabox.com/api/shorturlinfo?shorturl=${cleanToken}&root=1`, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Referer": "https://1024terabox.com/",
+            "Accept": "application/json"
+          }
+        });
+        if (infoResp.ok) {
+          const infoData = await infoResp.json();
+          if (infoData.list && infoData.list.length > 0) {
+            const item = infoData.list[0];
+            return new Response(JSON.stringify({
+              success: true,
+              videos: [{
+                title: item.server_filename || "TeraBox Video",
+                size: item.size || 0,
+                thumbnailUrl: item.thumbs?.url3 || item.thumbs?.url2 || item.thumbs?.url1 || "",
+                stream_url: item.dlink || ""
+              }]
+            }), {
+              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            });
+          }
+        }
+      } catch (e) {}
 
       return new Response(JSON.stringify({ success: false, message: "Stream extraction failed", debug: debugLogs }), {
         status: 404,
@@ -465,10 +496,14 @@ export default {
 
           // Security Guard: Verify destination domain on every redirect hop
           if (!isAllowedProxyUrl(nextUrl)) {
-            return new Response(
-              JSON.stringify({ error: "Access Denied: Redirected domain is not permitted." }),
-              { status: 403, headers: { "Content-Type": "application/json" } }
-            );
+            const nextHost = new URL(nextUrl).hostname.toLowerCase();
+            const isSubCdn = ALLOWED_TERABOX_HOSTS.some(allowed => nextHost.endsWith(allowed)) || nextHost.includes("terabox") || nextHost.includes("baidu");
+            if (!isSubCdn) {
+              return new Response(
+                JSON.stringify({ error: "Access Denied: Redirected domain is not permitted." }),
+                { status: 403, headers: { "Content-Type": "application/json" } }
+              );
+            }
           }
 
           currentUrl = nextUrl;
