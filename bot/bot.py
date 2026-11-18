@@ -278,10 +278,109 @@ def handle_channel_post(message: types.Message):
 
 
 # ==============================================================
-# 2. PRIVATE CHAT COMMANDS & ADMIN HANDLERS
+# 2. FORCE SUBSCRIPTION (FSub) & CHANNEL ACCESS GUARD
+# ==============================================================
+def get_channel_invite_link() -> str:
+    """Returns the clean public invite link for the official channel."""
+    target = (TARGET_CHANNEL_ID or "").strip()
+    if target.startswith("@"):
+        return f"https://t.me/{target[1:]}"
+    return "https://t.me/teravidsplayer"
+
+
+def is_user_subscribed(user_id: int) -> bool:
+    """
+    Checks if a user is subscribed to the official target channel.
+    Returns True if subscribed, creator, administrator, or if TARGET_CHANNEL_ID is not set.
+    """
+    if not TARGET_CHANNEL_ID:
+        return True
+    try:
+        member = bot.get_chat_member(TARGET_CHANNEL_ID, user_id)
+        return member.status in ["creator", "administrator", "member", "restricted"]
+    except telebot.apihelper.ApiTelegramException as e:
+        err_msg = str(e).lower()
+        if "user_not_participant" in err_msg or "participant_id_invalid" in err_msg:
+            return False
+        logger.warning(f"FSub API check: user_id={user_id} - {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"Unexpected FSub error for user {user_id}: {e}")
+        return True
+
+
+FORCE_SUB_TEXT = (
+    "🔒 <b>Access Restricted — Channel Members Only!</b>\n\n"
+    "To use <b>TeravidsPlay Bot</b> and stream TeraBox videos with:\n"
+    "• ⚡ Instant 1080p Full HD Streaming\n"
+    "• 🚫 Zero Ads & Zero Popups\n"
+    "• 🚀 High-Speed Direct Downloads\n\n"
+    "👉 You must join our official channel <b>@teravidsplayer</b> first!\n\n"
+    "👇 <b>Steps to Unlock:</b>\n"
+    "1️⃣ Click <b>📢 Join Official Channel</b> below.\n"
+    "2️⃣ Tap <b>Join</b> in the channel.\n"
+    "3️⃣ Return here and tap <b>🔄 Verify Membership</b>!"
+)
+
+
+def get_force_sub_markup() -> types.InlineKeyboardMarkup:
+    """Generates the modern 2-step inline keyboard for Force Subscription."""
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    channel_url = get_channel_invite_link()
+    btn_join = types.InlineKeyboardButton("📢 1. Join Official Channel ✨", url=channel_url)
+    btn_verify = types.InlineKeyboardButton("🔄 2. Verify Membership 🚀", callback_data="verify_fsub")
+    markup.add(btn_join, btn_verify)
+    return markup
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "verify_fsub")
+def handle_verify_fsub(call: types.CallbackQuery):
+    """Handles the 1-tap verification button when a user claims they have joined."""
+    user_id = call.from_user.id
+    if is_user_subscribed(user_id):
+        try:
+            bot.answer_callback_query(call.id, "✅ Verified! Welcome to TeravidsPlay 🚀", show_alert=False)
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=(
+                    "🎉 <b>Channel Membership Verified!</b>\n\n"
+                    "Welcome to <b>TeravidsPlay</b> 🚀\n"
+                    "Your access has been successfully unlocked.\n\n"
+                    "🎬 <b>How to Watch:</b>\n"
+                    "• Send any TeraBox link here in DM.\n"
+                    "• Enjoy fast 1080p streaming with Zero Ads!\n\n"
+                    "📢 Browse trending movies & series on <b>@teravidsplayer</b>"
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning(f"Error editing verify message: {e}")
+    else:
+        try:
+            bot.answer_callback_query(
+                call.id,
+                "⚠️ You have NOT joined @teravidsplayer yet!\n\nPlease tap 'Join Official Channel' first, then tap Verify.",
+                show_alert=True
+            )
+        except Exception as e:
+            logger.warning(f"Error answering callback query: {e}")
+
+
+# ==============================================================
+# 3. PRIVATE CHAT COMMANDS & ADMIN HANDLERS
 # ==============================================================
 @bot.message_handler(commands=["start", "help"])
 def handle_start(message: types.Message):
+    if message.chat.type == "private" and not is_user_subscribed(message.from_user.id):
+        bot.reply_to(
+            message,
+            FORCE_SUB_TEXT,
+            reply_markup=get_force_sub_markup(),
+            parse_mode="HTML"
+        )
+        return
+
     welcome_text = (
         "📢 <b>Welcome to TeravidsPlay Channel Bot!</b>\n\n"
         "Send me any TeraBox video link here, or post it directly in your channel <b>@teravidsplayer</b>.\n\n"
@@ -299,6 +398,15 @@ def handle_start(message: types.Message):
 
 @bot.message_handler(commands=["status"])
 def handle_status(message: types.Message):
+    if message.chat.type == "private" and not is_user_subscribed(message.from_user.id):
+        bot.reply_to(
+            message,
+            FORCE_SUB_TEXT,
+            reply_markup=get_force_sub_markup(),
+            parse_mode="HTML"
+        )
+        return
+
     status_text = (
         "⚙️ <b>TeravidsPlay System Diagnostics</b>\n\n"
         f"• <b>Engine:</b> 🚀 High-Speed Direct Edge Engine (Active)\n"
@@ -312,8 +420,25 @@ def handle_status(message: types.Message):
 @bot.message_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 def handle_private_post(message: types.Message):
     """Handles TeraBox links sent to the bot in private DM."""
+    if message.chat.type == "private" and not is_user_subscribed(message.from_user.id):
+        bot.reply_to(
+            message,
+            FORCE_SUB_TEXT,
+            reply_markup=get_force_sub_markup(),
+            parse_mode="HTML"
+        )
+        return
+
     raw_url = extract_url_from_message(message)
     if not raw_url or not is_terabox_url(raw_url):
+        if message.chat.type == "private":
+            hint_text = (
+                "👋 <b>Welcome to TeravidsPlay!</b>\n\n"
+                "Please send a valid <b>TeraBox link</b> to stream or download.\n\n"
+                "💡 <i>Example:</i> <code>https://terabox.com/s/1abcXYZ...</code>\n\n"
+                "📢 Or explore our latest collection on <b>@teravidsplayer</b>!"
+            )
+            bot.reply_to(message, hint_text, parse_mode="HTML")
         return
 
     surl_preview = extractor.parse_surl(raw_url) or ""
@@ -574,7 +699,7 @@ if __name__ == "__main__":
                 skip_pending=True,
                 timeout=20,
                 long_polling_timeout=20,
-                allowed_updates=["message", "edited_message", "channel_post", "edited_channel_post"],
+                allowed_updates=["message", "edited_message", "channel_post", "edited_channel_post", "callback_query"],
                 restart_on_change=False
             )
         except telebot.apihelper.ApiTelegramException as e:
