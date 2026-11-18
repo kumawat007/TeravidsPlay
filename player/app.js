@@ -598,6 +598,19 @@ document.addEventListener('DOMContentLoaded', () => {
       videoElement.poster = poster;
     }
 
+    // Direct download trigger if ?dl=1 requested
+    if ((urlParams.get('dl') === '1' || urlParams.get('download') === '1') && url) {
+      try {
+        const dlLink = document.createElement('a');
+        dlLink.href = url;
+        dlLink.download = cleanTitle || 'video.mp4';
+        dlLink.target = '_blank';
+        document.body.appendChild(dlLink);
+        dlLink.click();
+        document.body.removeChild(dlLink);
+      } catch (e) {}
+    }
+
     loader.classList.remove('hidden');
     loaderText.textContent = 'Connecting stream...';
     errorOverlay.style.display = 'none';

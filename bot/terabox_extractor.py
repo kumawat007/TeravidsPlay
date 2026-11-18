@@ -116,12 +116,8 @@ def format_bytes(size_bytes: int) -> str:
         for unit in ["B", "KB", "MB", "GB", "TB"]:
             if size < 1024.0:
                 if unit in ["MB", "GB"]:
-                    formatted = f"{size:.2f} {unit}"
-                    if formatted.endswith(".00 " + unit):
-                        return f"{int(size)} {unit}"
-                    elif formatted.endswith("0 " + unit):
-                        return f"{size:.1f} {unit}"
-                    return formatted
+                    val = f"{size:.2f}".rstrip("0").rstrip(".")
+                    return f"{val} {unit}"
                 return f"{int(size)} {unit}"
             size /= 1024.0
         return f"{size:.2f} PB"
@@ -157,7 +153,7 @@ class TeraBoxExtractor:
     def resolve_via_worker_engine(self, surl_or_url: str) -> Optional[Dict[str, Any]]:
         """
         Primary Engine for Cloud & Datacenter Deployments (Render / Koyeb / VPS):
-        Queries the Cloudflare Edge Worker API with ultra-fast timeout (2.5s).
+        Queries the Cloudflare Edge Worker API with reliable 10s timeout to fetch full metadata.
         """
         if not self.worker_url:
             self.last_diagnostics.append("Worker Engine skipped: worker_url is empty")
@@ -165,8 +161,8 @@ class TeraBoxExtractor:
         try:
             endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(surl_or_url)}"
             logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker: {endpoint}")
-            # Optimal 8s timeout to ensure full metadata (title, size, thumbnail) is extracted
-            resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=8)
+            # Reliable 10s timeout to allow edge crawler to extract real video title, size and thumbnail
+            resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=10)
             self.last_diagnostics.append(f"Worker {endpoint} -> status {resp.status_code}")
             logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code}")
             if resp.status_code == 200:

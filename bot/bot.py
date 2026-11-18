@@ -19,8 +19,12 @@ from dotenv import load_dotenv
 import telebot
 from telebot import types
 
-# Always load .env from the bot folder regardless of execution cwd
-dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+# Always load .env and module paths from the bot folder regardless of execution cwd
+bot_dir = os.path.dirname(__file__)
+if bot_dir not in sys.path:
+    sys.path.insert(0, bot_dir)
+
+dotenv_path = os.path.join(bot_dir, '.env')
 load_dotenv(dotenv_path)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -78,6 +82,9 @@ def extract_title_hint_from_message(message: types.Message, raw_url: str) -> str
     return ""
 
 
+DEFAULT_POSTER = "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80"
+
+
 def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "") -> tuple[types.InlineKeyboardMarkup, str]:
     """Builds direct-to-player inline buttons with vibrant, colorful TOP BEST Design."""
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -93,20 +100,18 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
     else:
         player_link = stream_url
 
-    # Vibrant Colorful High-CTR Action Buttons (TOP BEST 2027 Design)
-    watch_btn = types.InlineKeyboardButton(
+    # Button 1: Watch Online Full HD
+    markup.add(types.InlineKeyboardButton(
         text="🟢 ▶️ WATCH ONLINE (FULL HD) 🍿",
         url=player_link,
-    )
-    markup.add(watch_btn)
+    ))
 
-    # Direct Download link (only added if direct stream URL is available)
-    if stream_url:
-        download_btn = types.InlineKeyboardButton(
-            text="⚡ 📥 FAST DIRECT DOWNLOAD 🚀",
-            url=stream_url,
-        )
-        markup.add(download_btn)
+    # Button 2: Fast Direct Download (Guaranteed to ALWAYS be present)
+    download_url = stream_url if stream_url else (f"{player_link}&dl=1" if "?" in player_link else f"{player_link}?dl=1")
+    markup.add(types.InlineKeyboardButton(
+        text="⚡ 📥 FAST DIRECT DOWNLOAD 🚀",
+        url=download_url,
+    ))
 
     return markup, player_link
 
@@ -114,37 +119,35 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "")
 def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, markup: types.InlineKeyboardMarkup, short_link: str = ""):
     """Sends the formatted video card with photo or text fallback."""
     safe_title = html.escape(title[:120])
+    size_label = size if (size and size not in ["0 B", "Unknown Size", "HD Stream"]) else "1080p HD"
 
-    # Ultra-clean caption: strictly Title & Size (all spam/clutter removed)
-    lines = [f"🎬 <b>{safe_title}</b>"]
-    if size and size not in ["HD Stream", "Unknown Size", "0 B"]:
-        lines.append(f"📦 <b>Size:</b> {size}")
+    # Strictly user format:
+    # 🎬 <video real name>
+    # 📦 Size: <size>
+    caption = f"🎬 <b>{safe_title}</b>\n\n📦 <b>Size:</b> {size_label}"
 
-    caption = "\n\n".join(lines)
+    photo_target = thumb_url if (thumb_url and thumb_url.startswith("http")) else DEFAULT_POSTER
 
-    if thumb_url and thumb_url.startswith("http"):
-        # 1. Try delivering photo via CDN URL directly
-        try:
-            return bot.send_photo(
-                chat_id=chat_id,
-                photo=thumb_url,
-                caption=caption,
-                reply_markup=markup,
-            )
-        except Exception as e:
-            logger.warning(f"Could not deliver thumbnail photo via URL to {chat_id}: {e}. Retrying via direct byte stream...")
-            # 2. Try fetching image bytes directly to bypass Telegram server-side CDN fetch blocks
+    try:
+        return bot.send_photo(
+            chat_id=chat_id,
+            photo=photo_target,
+            caption=caption,
+            reply_markup=markup,
+        )
+    except Exception as e:
+        logger.warning(f"Could not deliver photo to {chat_id} with {photo_target}: {e}")
+        # If custom thumbnail failed, attempt with DEFAULT_POSTER fallback
+        if photo_target != DEFAULT_POSTER:
             try:
-                img_res = requests.get(thumb_url, headers=DEFAULT_HEADERS, timeout=6)
-                if img_res.status_code == 200 and len(img_res.content) > 100:
-                    return bot.send_photo(
-                        chat_id=chat_id,
-                        photo=img_res.content,
-                        caption=caption,
-                        reply_markup=markup,
-                    )
+                return bot.send_photo(
+                    chat_id=chat_id,
+                    photo=DEFAULT_POSTER,
+                    caption=caption,
+                    reply_markup=markup,
+                )
             except Exception as e2:
-                logger.warning(f"Direct byte photo delivery also failed: {e2}")
+                logger.warning(f"Default poster photo delivery also failed to {chat_id}: {e2}")
 
     return bot.send_message(
         chat_id=chat_id,
@@ -174,20 +177,19 @@ def handle_channel_post(message: types.Message):
     surl = data.get("surl") or extractor.parse_surl(raw_url) or ""
 
     if data.get("success"):
-        real_title = data.get("title") or ""
-        # Prioritize custom user-typed title/caption, else use real file title from extractor
-        if title_hint:
-            title = title_hint
+        extracted_title = data.get("title") or ""
+        if extracted_title and extracted_title not in ["TeraBox Video", "TeraBox Video Stream"]:
+            title = extracted_title
         else:
-            title = real_title or "TeraBox Video"
+            title = title_hint or extracted_title or "TeraBox Video"
         size = data.get("size_formatted", "")
         quality = data.get("quality", "HD 1080p")
         stream_url = data.get("stream_url")
         thumb_url = data.get("thumbnail")
     elif surl:
         logger.info(f"Using instant Web Player fallback for channel post: {surl}")
-        title = title_hint or "TeraBox Video Stream"
-        size = "HD Stream"
+        title = title_hint or "TeraBox Video"
+        size = "1080p HD"
         quality = "HD 1080p"
         stream_url = ""
         thumb_url = None
@@ -276,19 +278,18 @@ def handle_private_post(message: types.Message):
     surl = data.get("surl") or extractor.parse_surl(raw_url) or ""
 
     if data.get("success"):
-        real_title = data.get("title") or ""
-        # Prioritize custom user-typed title/caption, else use real file title from extractor
-        if title_hint:
-            title = title_hint
+        extracted_title = data.get("title") or ""
+        if extracted_title and extracted_title not in ["TeraBox Video", "TeraBox Video Stream"]:
+            title = extracted_title
         else:
-            title = real_title or "TeraBox Video"
+            title = title_hint or extracted_title or "TeraBox Video"
         size = data.get("size_formatted", "")
         quality = data.get("quality", "HD 1080p")
         stream_url = data.get("stream_url")
         thumb_url = data.get("thumbnail")
     elif surl:
-        title = title_hint or "TeraBox Video Stream"
-        size = "HD Stream"
+        title = title_hint or "TeraBox Video"
+        size = "1080p HD"
         quality = "HD 1080p"
         stream_url = ""
         thumb_url = None
@@ -445,36 +446,6 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         pass
 
 
-def start_keepalive_pinger():
-    """
-    Background keepalive pinger that pings the Render Web Service every 8 minutes.
-    Prevents Render Free Tier instances from sleeping due to zero inbound HTTP requests.
-    """
-    def pinger_loop():
-        # Delay initial ping so the health server has fully bound
-        time.sleep(25)
-        raw_url = os.getenv("RENDER_EXTERNAL_URL", "https://teravidsplay.onrender.com").strip()
-        target_url = raw_url.rstrip("/") + "/"
-        logger.info(f"[KeepAlive] Keepalive pinger initialized. Target: {target_url}")
-        
-        while True:
-            try:
-                resp = requests.get(
-                    target_url,
-                    headers={"User-Agent": "TeravidsPlay-KeepAlive/1.0"},
-                    timeout=15
-                )
-                logger.info(f"[KeepAlive] Keepalive ping sent -> HTTP {resp.status_code}")
-            except Exception as e:
-                logger.warning(f"[KeepAlive] Keepalive ping notice: {e}")
-            
-            # Sleep 8 minutes (Render free tier timeout is 15 minutes of inbound HTTP inactivity)
-            time.sleep(8 * 60)
-
-    thread = threading.Thread(target=pinger_loop, daemon=True)
-    thread.start()
-
-
 def start_health_server():
     port_str = os.getenv("PORT")
     if not port_str:
@@ -489,6 +460,25 @@ def start_health_server():
         logger.warning(f"Could not start cloud health server: {e}")
 
 
+def keep_alive_loop():
+    """
+    24/7 Keep-Alive Monitor for Render Free Web Services.
+    Render automatically spins down free instances after 15 minutes of no inbound HTTP traffic.
+    This internal heartbeat loop sends an HTTP ping to the health endpoint every 8 minutes.
+    """
+    time.sleep(30)
+    health_url = os.getenv("RENDER_EXTERNAL_URL") or "https://teravidsplay.onrender.com"
+    health_url = health_url.rstrip("/")
+    logger.info(f"[KeepAlive] 24/7 Keep-alive monitor active for: {health_url}")
+    while True:
+        try:
+            time.sleep(480)  # Every 8 minutes
+            resp = requests.get(f"{health_url}/", timeout=12)
+            logger.info(f"[KeepAlive] Heartbeat ping delivered: HTTP {resp.status_code}")
+        except Exception as e:
+            logger.debug(f"[KeepAlive] Heartbeat ping notice: {e}")
+
+
 if __name__ == "__main__":
     logger.info("TeravidsPlay Production Channel Bot is starting...")
     print("\n" + "=" * 60)
@@ -498,8 +488,9 @@ if __name__ == "__main__":
     # Start health server for Render / Koyeb cloud hosting (if PORT is set)
     start_health_server()
 
-    # Start 24/7 keepalive pinger to prevent Render free instance from sleeping
-    start_keepalive_pinger()
+    # Start 24/7 Keep-Alive self-pinger to prevent Render container hibernation
+    t_keepalive = threading.Thread(target=keep_alive_loop, daemon=True)
+    t_keepalive.start()
 
     # Resilient polling engine: Handles Render rolling deployments & dual-instance 409 conflicts
     while True:

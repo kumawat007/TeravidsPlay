@@ -314,20 +314,18 @@ export default {
           : `${playerBase}/?stream=${encodeURIComponent(streamUrl)}&title=${encodeURIComponent(title)}&size=${encodeURIComponent(sizeFormatted)}`;
 
         const cleanTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 120);
-        const lines = [`🎬 <b>${cleanTitle}</b>`];
-        if (sizeFormatted && sizeFormatted !== "HD Stream" && sizeFormatted !== "0 B" && sizeFormatted !== "Unknown Size") {
-          lines.push(`📦 <b>Size:</b> ${sizeFormatted}`);
-        }
-        const caption = lines.join("\n\n");
+        const sizeLabel = (sizeFormatted && sizeFormatted !== "HD Stream" && sizeFormatted !== "0 B" && sizeFormatted !== "Unknown Size") 
+          ? sizeFormatted 
+          : "1080p HD";
+        const caption = `🎬 <b>${cleanTitle}</b>\n\n📦 <b>Size:</b> ${sizeLabel}`;
 
+        const downloadTarget = streamUrl || (shortPlayerUrl.includes("?") ? `${shortPlayerUrl}&dl=1` : `${shortPlayerUrl}?dl=1`);
         const replyMarkup = {
           inline_keyboard: [
-            [{ text: "🟢 ▶️ WATCH ONLINE (FULL HD) 🍿", url: shortPlayerUrl }]
+            [{ text: "🟢 ▶️ WATCH ONLINE (FULL HD) 🍿", url: shortPlayerUrl }],
+            [{ text: "⚡ 📥 FAST DIRECT DOWNLOAD 🚀", url: downloadTarget }]
           ]
         };
-        if (streamUrl) {
-          replyMarkup.inline_keyboard.push([{ text: "⚡ 📥 FAST DIRECT DOWNLOAD 🚀", url: streamUrl }]);
-        }
 
         // 1. Delete original raw link post
         try {
@@ -349,23 +347,42 @@ export default {
           } catch (e) {}
         }
 
-        // 3. Publish card with photo or text fallback
+        // 3. Publish card with guaranteed photo preview
+        const defaultPoster = "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80";
+        const photoTarget = (thumbUrl && thumbUrl.startsWith("http")) ? thumbUrl : defaultPoster;
         let published = false;
-        if (thumbUrl && thumbUrl.startsWith("http")) {
+
+        try {
+          const photoResp = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              photo: photoTarget,
+              caption: caption,
+              parse_mode: "HTML",
+              reply_markup: replyMarkup
+            })
+          });
+          const photoData = await photoResp.json();
+          if (photoData.ok) published = true;
+        } catch (e) {}
+
+        if (!published && photoTarget !== defaultPoster) {
           try {
-            const photoResp = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+            const fbResp = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 chat_id: chatId,
-                photo: thumbUrl,
+                photo: defaultPoster,
                 caption: caption,
                 parse_mode: "HTML",
                 reply_markup: replyMarkup
               })
             });
-            const photoData = await photoResp.json();
-            if (photoData.ok) published = true;
+            const fbData = await fbResp.json();
+            if (fbData.ok) published = true;
           } catch (e) {}
         }
 
@@ -539,17 +556,11 @@ export default {
     }
   },
 
-  // 24/7 Cloudflare Edge Cron Trigger to keep Render Web Service permanently awake
   async scheduled(event, env, ctx) {
-    const renderUrl = env.RENDER_URL || "https://teravidsplay.onrender.com/";
+    // 24/7 Free Keep-Alive ping to Render web service every 10 minutes
+    const renderUrl = env.RENDER_URL || "https://teravidsplay.onrender.com";
     try {
-      await fetch(renderUrl, {
-        method: "GET",
-        headers: { "User-Agent": "TeravidsPlay-CloudflareCronKeepAlive/1.0" },
-      });
-      console.log(`[Scheduled] Render keepalive ping delivered to ${renderUrl}`);
-    } catch (e) {
-      console.warn(`[Scheduled] Keepalive ping error: ${e.message}`);
-    }
+      await fetch(renderUrl, { headers: { "User-Agent": "TeravidsPlay-KeepAlive/2027" } });
+    } catch (e) {}
   },
 };
