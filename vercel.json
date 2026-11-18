@@ -1,9 +1,21 @@
 {
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/", "destination": "/player/index.html" },
-    { "source": "/style.css", "destination": "/player/style.css" },
-    { "source": "/app.js", "destination": "/player/app.js" },
-    { "source": "/(.*)", "destination": "/player/$1" }
+    {
+      "source": "/v/:id",
+      "destination": "/player/index.html?v=:id"
+    },
+    {
+      "source": "/s/:id",
+      "destination": "/player/index.html?s=:id"
+    },
+    {
+      "source": "/",
+      "destination": "/player/index.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/player/$1"
+    }
   ]
 }

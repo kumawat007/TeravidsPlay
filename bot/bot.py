@@ -82,11 +82,35 @@ def extract_title_hint_from_message(message: types.Message, raw_url: str) -> str
     return ""
 
 
-DEFAULT_POSTER = "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80"
+DEFAULT_POSTER = "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1200&q=80"
+
+
+def download_image_bytes(thumb_url: str, timeout: int = 6):
+    """
+    Downloads image bytes using browser headers so Telegram receives direct binary upload.
+    Bypasses Telegram CDN 405 Method Not Allowed / 403 Forbidden errors from TeraBox CDNs.
+    """
+    if not thumb_url or not thumb_url.startswith("http"):
+        return None
+    import io
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Referer": "https://www.terabox.com/",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+        }
+        resp = requests.get(thumb_url, headers=headers, timeout=timeout)
+        if resp.status_code == 200 and len(resp.content) > 500:
+            bio = io.BytesIO(resp.content)
+            bio.name = "preview.jpg"
+            return bio
+    except Exception as e:
+        logger.warning(f"Could not download thumbnail bytes from {thumb_url}: {e}")
+    return None
 
 
 def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "", thumb: str = "") -> tuple[types.InlineKeyboardMarkup, str]:
-    """Builds direct-to-player inline buttons with vibrant, colorful TOP BEST Design."""
+    """Builds direct-to-player inline buttons with own-domain short URL format."""
     markup = types.InlineKeyboardMarkup(row_width=1)
 
     encoded_title = urllib.parse.quote(title) if title else ""
@@ -94,15 +118,16 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "",
     encoded_thumb = urllib.parse.quote(thumb) if (thumb and thumb.startswith("http")) else ""
 
     if PLAYER_URL and surl:
-        # Clean own domain web player URL with auto-unlock flag & metadata
-        params = [f"v={surl}", "tg=1"]
+        # Own Domain Web Player Short URL (/v/TOKEN) with auto-unlock flag
+        extra = []
         if encoded_title:
-            params.append(f"title={encoded_title}")
+            extra.append(f"title={encoded_title}")
         if encoded_size:
-            params.append(f"size={encoded_size}")
+            extra.append(f"size={encoded_size}")
         if encoded_thumb:
-            params.append(f"thumb={encoded_thumb}")
-        player_link = f"{PLAYER_URL}/?{'&'.join(params)}"
+            extra.append(f"thumb={encoded_thumb}")
+        extra_query = ("&" + "&".join(extra)) if extra else ""
+        player_link = f"{PLAYER_URL}/v/{surl}?tg=1{extra_query}"
     elif PLAYER_URL:
         encoded_stream = urllib.parse.quote(stream_url)
         params = [f"stream={encoded_stream}", "tg=1"]
@@ -133,7 +158,7 @@ def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "",
 
 
 def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, markup: types.InlineKeyboardMarkup, short_link: str = ""):
-    """Sends the formatted video card with photo or text fallback."""
+    """Sends the formatted video card with guaranteed photo preview."""
     safe_title = html.escape(title[:120])
     size_label = size if (size and size not in ["0 B", "Unknown Size", "HD Stream"]) else "1080p HD"
 
@@ -142,29 +167,44 @@ def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, m
     # 📦 Size: <size>
     caption = f"🎬 <b>{safe_title}</b>\n\n📦 <b>Size:</b> {size_label}"
 
-    photo_target = thumb_url if (thumb_url and thumb_url.startswith("http")) else DEFAULT_POSTER
+    # 1. Download real image bytes and upload directly (Fixes missing thumbnail preview!)
+    if thumb_url and thumb_url.startswith("http"):
+        img_bio = download_image_bytes(thumb_url)
+        if img_bio:
+            try:
+                return bot.send_photo(
+                    chat_id=chat_id,
+                    photo=img_bio,
+                    caption=caption,
+                    reply_markup=markup,
+                )
+            except Exception as e:
+                logger.warning(f"Direct photo stream upload failed for {chat_id}: {e}")
 
+    # 2. Try URL delivery if bytes download failed
+    if thumb_url and thumb_url.startswith("http"):
+        try:
+            return bot.send_photo(
+                chat_id=chat_id,
+                photo=thumb_url,
+                caption=caption,
+                reply_markup=markup,
+            )
+        except Exception as e:
+            logger.warning(f"Direct URL photo delivery failed for {chat_id}: {e}")
+
+    # 3. Cinematic high-res fallback poster
     try:
         return bot.send_photo(
             chat_id=chat_id,
-            photo=photo_target,
+            photo=DEFAULT_POSTER,
             caption=caption,
             reply_markup=markup,
         )
     except Exception as e:
-        logger.warning(f"Could not deliver photo to {chat_id} with {photo_target}: {e}")
-        # If custom thumbnail failed, attempt with DEFAULT_POSTER fallback
-        if photo_target != DEFAULT_POSTER:
-            try:
-                return bot.send_photo(
-                    chat_id=chat_id,
-                    photo=DEFAULT_POSTER,
-                    caption=caption,
-                    reply_markup=markup,
-                )
-            except Exception as e2:
-                logger.warning(f"Default poster photo delivery also failed to {chat_id}: {e2}")
+        logger.warning(f"Default poster photo delivery also failed for {chat_id}: {e}")
 
+    # 4. Text fallback
     return bot.send_message(
         chat_id=chat_id,
         text=caption,
@@ -288,7 +328,17 @@ def handle_private_post(message: types.Message):
     masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"
     logger.info(f"Processing verified TeraBox link in DM: surl={masked_token}")
 
-    # Silent direct resolution: no waiting message in channel or chat
+    # Temporary feedback in private DM (deleted immediately when card is ready)
+    waiting_msg = None
+    try:
+        waiting_msg = bot.send_message(
+            chat_id=message.chat.id,
+            text="⏳ <b>Resolving video stream...</b>",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
     title_hint = extract_title_hint_from_message(message, raw_url)
 
     data = extractor.get_video_stream(raw_url)
@@ -311,6 +361,11 @@ def handle_private_post(message: types.Message):
         stream_url = ""
         thumb_url = None
     else:
+        if waiting_msg:
+            try:
+                bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
+            except Exception:
+                pass
         bot.reply_to(
             message,
             f"❌ <b>Resolution Failed:</b>\n{data.get('message', 'Link expired or unreachable.')}"
@@ -346,6 +401,13 @@ def handle_private_post(message: types.Message):
         except Exception as e:
             channel_error = str(e)
             logger.error(f"Failed to publish to channel {TARGET_CHANNEL_ID}: {e}")
+
+    # Delete waiting message from DM before sending final card
+    if waiting_msg:
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
+        except Exception:
+            pass
 
     # Update DM status
     if channel_posted:

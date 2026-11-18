@@ -1,0 +1,17 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/v/:id",
+      "destination": "/index.html?v=:id"
+    },
+    {
+      "source": "/s/:id",
+      "destination": "/index.html?s=:id"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

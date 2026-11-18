@@ -19,7 +19,8 @@ const ALLOWED_TERABOX_HOSTS = [
   "teraboxlink.com", "tibibox.com", "momerybox.com",
   "terasharelink.com", "baidupcs.com", "tribox.com",
   "dubox.com", "bdydns.com", "baidu.com", "teraboxcdn.com",
-  "iteraplay.in", "playterabox.com", "cloudflarestorage.com"
+  "iteraplay.in", "iteraplay.com", "playterabox.com", "cloudflarestorage.com",
+  "qzz.io", "cdniteraplay.qzz.io"
 ];
 
 function isAllowedProxyUrl(urlString) {
@@ -121,7 +122,7 @@ export default {
     if (url.pathname.startsWith("/v/") || url.pathname.startsWith("/s/")) {
       const parts = url.pathname.split("/").filter(Boolean);
       const surl = parts[1] || "";
-      return Response.redirect(`${playerBase}/?v=${surl}`, 302);
+      return Response.redirect(`${playerBase}/v/${surl}${url.search || '?tg=1'}`, 302);
     }
 
     // 2.2 High-Speed Metadata & Stream Resolution API (/api/resolve?surl=...)
@@ -332,7 +333,10 @@ export default {
         if (encodedTitle) playerParams.push(`title=${encodedTitle}`);
         if (encodedSize) playerParams.push(`size=${encodedSize}`);
         if (encodedThumb) playerParams.push(`thumb=${encodedThumb}`);
-        const shortPlayerUrl = `${playerBase}/?${playerParams.join("&")}`;
+        const otherParams = playerParams.filter(p => !p.startsWith('v='));
+        const shortPlayerUrl = surl 
+          ? `${playerBase}/v/${surl}?${otherParams.join("&")}` 
+          : `${playerBase}/?${playerParams.join("&")}`;
 
         const cleanTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 120);
         const sizeLabel = (sizeFormatted && sizeFormatted !== "HD Stream" && sizeFormatted !== "0 B" && sizeFormatted !== "Unknown Size") 

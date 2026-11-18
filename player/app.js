@@ -143,6 +143,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // 3. Parse Parameters & Telegram Auto-Unlock
   const urlParams = new URLSearchParams(window.location.search);
   let vId = urlParams.get('v') || urlParams.get('s') || '';
+  if (!vId) {
+    const pathMatch = window.location.pathname.match(/\/(v|s)\/([a-zA-Z0-9_-]+)/);
+    if (pathMatch) {
+      vId = pathMatch[2];
+    }
+  }
   let rawStream = urlParams.get('stream') || '';
   const rawTitle = urlParams.get('title') || '';
   const rawSize = urlParams.get('size') || '';
@@ -224,27 +230,84 @@ document.addEventListener('DOMContentLoaded', () => {
     activateHomeView();
   }
 
-  // 4. Auto-Hiding Controls Engine
+  // 4. Auto-Hiding Controls Engine & Single/Double Tap System
   let controlsTimeout = null;
+  let tapTimer = null;
+  let tapCount = 0;
 
-  function showControls() {
+  function isControlsVisible() {
+    return !playerContainer.classList.contains('controls-hidden');
+  }
+
+  function showControls(delay = 3500) {
     playerContainer.classList.remove('controls-hidden');
     clearTimeout(controlsTimeout);
-    if (!videoElement.paused) {
+    if (!videoElement.paused && delay > 0) {
       controlsTimeout = setTimeout(() => {
-        // Don't auto-hide if settings popover is open
         if (settingsMenu && settingsMenu.style.display !== 'none') return;
         playerContainer.classList.add('controls-hidden');
-      }, 3000);
+      }, delay);
     }
   }
 
-  playerContainer.addEventListener('mousemove', showControls);
-  playerContainer.addEventListener('touchstart', showControls, { passive: true });
+  function hideControls() {
+    if (settingsMenu) settingsMenu.style.display = 'none';
+    if (!videoElement.paused) {
+      playerContainer.classList.add('controls-hidden');
+    }
+    clearTimeout(controlsTimeout);
+  }
+
+  function toggleControls() {
+    if (isControlsVisible()) {
+      hideControls();
+    } else {
+      showControls(3500);
+    }
+  }
+
+  playerContainer.addEventListener('mousemove', () => {
+    showControls(3500);
+  });
+
+  playerContainer.addEventListener('mouseleave', () => {
+    if (!videoElement.paused) {
+      controlsTimeout = setTimeout(() => {
+        if (settingsMenu && settingsMenu.style.display !== 'none') return;
+        playerContainer.classList.add('controls-hidden');
+      }, 1200);
+    }
+  });
+
+  // Single Tap toggles controls, Double Tap seeks 10s
   playerContainer.addEventListener('click', (e) => {
-    // If click was on a button, input, or popover, don't toggle play/pause
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover')) return;
-    togglePlay();
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover') || e.target.closest('.channel-gate-card') || e.target.closest('.error-card')) {
+      showControls(4000);
+      return;
+    }
+
+    const rect = playerContainer.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const isRightSide = clickX > rect.width / 2;
+
+    tapCount++;
+    if (tapCount === 1) {
+      tapTimer = setTimeout(() => {
+        tapCount = 0;
+        toggleControls();
+      }, 260);
+    } else if (tapCount === 2) {
+      clearTimeout(tapTimer);
+      tapCount = 0;
+      if (isRightSide) {
+        videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
+        showRipple('right');
+      } else {
+        videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
+        showRipple('left');
+      }
+      showControls(3500);
+    }
   });
 
   // 5. Play / Pause Control
@@ -330,15 +393,23 @@ document.addEventListener('DOMContentLoaded', () => {
     checkResume();
   });
 
+  function getScrubberX(e) {
+    if (e.touches && e.touches.length > 0) return e.touches[0].clientX;
+    if (e.changedTouches && e.changedTouches.length > 0) return e.changedTouches[0].clientX;
+    return e.clientX || 0;
+  }
+
   function seekToPosition(e) {
     const rect = scrubberContainer.getBoundingClientRect();
-    const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const clickX = Math.max(0, Math.min(getScrubberX(e) - rect.left, rect.width));
     const pct = clickX / rect.width;
     videoElement.currentTime = pct * videoElement.duration;
     scrubberProgress.style.width = `${pct * 100}%`;
     scrubberThumb.style.left = `${pct * 100}%`;
+    currentTimeElem.textContent = formatTime(videoElement.currentTime);
   }
 
+  // Mouse seek
   scrubberContainer.addEventListener('mousedown', (e) => {
     isScrubbing = true;
     seekToPosition(e);
@@ -350,6 +421,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.addEventListener('mouseup', () => {
     if (isScrubbing) isScrubbing = false;
+  });
+
+  // Touch seek for Mobile
+  scrubberContainer.addEventListener('touchstart', (e) => {
+    isScrubbing = true;
+    showControls(5000);
+    seekToPosition(e);
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (isScrubbing) {
+      seekToPosition(e);
+      const rect = scrubberContainer.getBoundingClientRect();
+      const hoverX = Math.max(0, Math.min(getScrubberX(e) - rect.left, rect.width));
+      const pct = hoverX / rect.width;
+      if (videoElement.duration) {
+        scrubberTooltip.textContent = formatTime(pct * videoElement.duration);
+        scrubberTooltip.style.left = `${hoverX}px`;
+        scrubberTooltip.style.display = 'block';
+      }
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchend', () => {
+    if (isScrubbing) {
+      isScrubbing = false;
+      scrubberTooltip.style.display = 'none';
+      showControls(3500);
+    }
   });
 
   scrubberContainer.addEventListener('mousemove', (e) => {
@@ -679,32 +779,7 @@ document.addEventListener('DOMContentLoaded', () => {
   playerContainer.addEventListener('touchstart', startLongPress, { passive: true });
   window.addEventListener('touchend', stopLongPress);
 
-  // 15. Double-Tap Seek (Mobile & Touch)
-  let lastTapTime = 0;
-  let tapTimeout = null;
-
-  playerContainer.addEventListener('click', (e) => {
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover')) return;
-    const now = Date.now();
-    const rect = playerContainer.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const isRightSide = clickX > rect.width / 2;
-
-    if (now - lastTapTime < 300) {
-      clearTimeout(tapTimeout);
-      if (isRightSide) {
-        videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
-        showRipple('right');
-      } else {
-        videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
-        showRipple('left');
-      }
-      lastTapTime = 0;
-    } else {
-      lastTapTime = now;
-      tapTimeout = setTimeout(() => { lastTapTime = 0; }, 320);
-    }
-  });
+  // 15. Double-Tap Seek handled in unified gesture listener (Section 4)
 
   // 16. Swipe Gestures for Brightness & Volume
   let touchStartX = 0;
@@ -883,7 +958,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (isM3U8 && Hls.isSupported()) {
-      hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true });
+      hlsInstance = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        maxBufferSize: 60 * 1000 * 1000,
+        startLevel: -1,
+      });
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(videoElement);
 
@@ -1004,10 +1086,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const thumb = vid.thumbnailUrl || cleanThumb;
         if (thumb) videoElement.poster = thumb;
 
-        if (topDownloadBtn) topDownloadBtn.href = vid.stream_url;
-        if (btnDownloadExt) btnDownloadExt.href = vid.stream_url;
+        const fastMap = vid.fast_stream_url || {};
+        const hlsCandidate = fastMap['1080p'] || fastMap['720p'] || fastMap['480p'] || fastMap['360p'] || vid.hls_url;
+        const playSource = (Hls.isSupported() && hlsCandidate) ? hlsCandidate : (vid.stream_url || hlsCandidate);
 
-        loadStream(vid.stream_url, thumb);
+        const dlUrl = vid.stream_url || playSource;
+        if (topDownloadBtn) topDownloadBtn.href = dlUrl;
+        if (btnDownloadExt) btnDownloadExt.href = dlUrl;
+
+        loadStream(playSource, thumb);
         return;
       }
       showError('Video Unavailable', 'Could not resolve stream for this link. It may have expired or is private.');
@@ -1018,7 +1105,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 22. Share Listeners
   async function triggerShare() {
-    const shareUrl = vId ? `${window.location.origin}/?v=${vId}` : window.location.href;
+    const shareUrl = vId ? `${window.location.origin}/v/${vId}` : window.location.href;
     if (navigator.share) {
       try {
         await navigator.share({ title: topVideoTitle.textContent || cleanTitle, url: shareUrl });

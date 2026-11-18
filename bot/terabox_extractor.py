@@ -32,6 +32,15 @@ ALLOWED_TERABOX_HOSTS = {
     "tibibox.com",
     "momerybox.com",
     "terasharelink.com",
+    "iteraplay.in",
+    "iteraplay.com",
+    "qzz.io",
+    "cdniteraplay.qzz.io",
+    "dubox.com",
+    "bdydns.com",
+    "baidu.com",
+    "baidupcs.com",
+    "playterabox.com",
 }
 
 # Strictly allowed public URL shorteners
