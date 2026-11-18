@@ -184,9 +184,9 @@ export default {
       }
 
       // Secondary Fallback: Query TeraBox shorturlinfo directly
-      const cleanToken = surl.replace(/^.*\/s\//, "").replace("surl=", "").replace(/^1/, "");
+      const shortToken = cleanToken.replace(/^1/, "");
       try {
-        const infoResp = await fetch(`https://1024terabox.com/api/shorturlinfo?shorturl=${cleanToken}&root=1`, {
+        const infoResp = await fetch(`https://1024terabox.com/api/shorturlinfo?shorturl=${shortToken}&root=1`, {
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "Referer": "https://1024terabox.com/",
@@ -263,14 +263,18 @@ export default {
 
         // Resolve stream via High-Speed Edge Engine with candidate fallbacks
         let videoData = null;
-        const surlExtract = extracted.match(/\/s\/([a-zA-Z0-9_-]+)/);
+        const surlExtract = extracted.match(/\/(?:s|v)\/([a-zA-Z0-9_-]+)/) || extracted.match(/[?&](?:surl|v|s)=([a-zA-Z0-9_-]+)/);
         const rawToken = surlExtract ? surlExtract[1] : "";
         const formattedWebhookToken = rawToken ? (rawToken.startsWith("1") ? rawToken : "1" + rawToken) : "";
         
-        const webhookCandidates = [extracted];
+        const webhookCandidates = [];
         if (formattedWebhookToken) {
-          webhookCandidates.push(`https://1024terabox.com/s/${formattedWebhookToken}`);
           webhookCandidates.push(`https://terabox.com/s/${formattedWebhookToken}`);
+          webhookCandidates.push(`https://1024terabox.com/s/${formattedWebhookToken}`);
+          webhookCandidates.push(`https://teraboxapp.com/s/${formattedWebhookToken}`);
+        }
+        if (!webhookCandidates.includes(extracted)) {
+          webhookCandidates.push(extracted);
         }
 
         for (const candidate of webhookCandidates) {
@@ -342,7 +346,7 @@ export default {
         if (encodedThumb) playerParams.push(`thumb=${encodedThumb}`);
         const otherParams = playerParams.filter(p => !p.startsWith('v='));
         const shortPlayerUrl = surl 
-          ? `${playerBase}/v/${surl}?${otherParams.join("&")}` 
+          ? `${playerBase}/?v=${surl}&tg=1` 
           : `${playerBase}/?${playerParams.join("&")}`;
 
         const cleanTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 120);
