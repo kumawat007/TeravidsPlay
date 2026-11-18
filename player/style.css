@@ -1347,11 +1347,6 @@ html, body {
     display: none !important;
   }
 
-  /* Hide redundant format badge in player top overlay on mobile (keeps title 100% readable) */
-  #topFormatBadge {
-    display: none !important;
-  }
-
   /* Show Rotate Button in Controls Right */
   #rotateBtn.mobile-only-ctrl {
     display: inline-flex !important;

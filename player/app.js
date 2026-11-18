@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Top Bar Elements
   const topVideoTitle = document.getElementById('topVideoTitle');
-  const topFormatBadge = document.getElementById('topFormatBadge');
   const topDownloadBtn = document.getElementById('topDownloadBtn');
   const topShareBtn = document.getElementById('topShareBtn');
 
@@ -108,7 +107,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Below-player metadata & external actions
   const videoTitleElem = document.getElementById('videoTitle');
-  const formatBadgeElem = document.getElementById('formatBadge');
   const fileSizeElem = document.getElementById('fileSize');
   const btnDownloadExt = document.getElementById('btnDownloadExt');
   const btnShareExt = document.getElementById('btnShareExt');
@@ -1069,8 +1067,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (externalDownloadBtn) externalDownloadBtn.href = url;
 
     const isM3U8 = url.includes('.m3u8');
-    if (topFormatBadge) topFormatBadge.textContent = '1080P FULL HD';
-    if (formatBadgeElem) formatBadgeElem.textContent = 'FULL HD 1080P';
 
     if (hlsInstance) {
       hlsInstance.destroy();
