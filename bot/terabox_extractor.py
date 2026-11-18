@@ -41,6 +41,12 @@ ALLOWED_TERABOX_HOSTS = {
     "baidu.com",
     "baidupcs.com",
     "playterabox.com",
+    "teravidsplayer.vercel.app",
+    "vercel.app",
+    "proxyking.workers.dev",
+    "workers.dev",
+    "teravidsplay.onrender.com",
+    "onrender.com",
 }
 
 # Strictly allowed public URL shorteners
@@ -219,7 +225,7 @@ class TeraBoxExtractor:
         return None
 
     def parse_surl(self, share_url: str) -> Optional[str]:
-        """Extracts the unique shorturl token from any TeraBox URL pattern."""
+        """Extracts the unique shorturl token from any TeraBox or TeravidsPlay URL pattern."""
         try:
             parsed = urllib.parse.urlparse(share_url)
             query = urllib.parse.parse_qs(parsed.query)
@@ -227,7 +233,13 @@ class TeraBoxExtractor:
             if "surl" in query and query["surl"]:
                 return query["surl"][0]
 
-            match = re.search(r"/s/([a-zA-Z0-9_-]+)", share_url)
+            if "v" in query and query["v"]:
+                return query["v"][0]
+
+            if "s" in query and query["s"]:
+                return query["s"][0]
+
+            match = re.search(r"/(?:s|v)/([a-zA-Z0-9_-]+)", share_url)
             if match:
                 return match.group(1)
 

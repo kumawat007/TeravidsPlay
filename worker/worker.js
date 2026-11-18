@@ -20,7 +20,8 @@ const ALLOWED_TERABOX_HOSTS = [
   "terasharelink.com", "baidupcs.com", "tribox.com",
   "dubox.com", "bdydns.com", "baidu.com", "teraboxcdn.com",
   "iteraplay.in", "iteraplay.com", "playterabox.com", "cloudflarestorage.com",
-  "qzz.io", "cdniteraplay.qzz.io"
+  "qzz.io", "cdniteraplay.qzz.io",
+  "teravidsplayer.vercel.app", "vercel.app", "workers.dev", "proxyking.workers.dev"
 ];
 
 function isAllowedProxyUrl(urlString) {
@@ -136,7 +137,7 @@ export default {
         });
       }
 
-      let cleanToken = surl.replace(/^.*\/s\//, "").replace("surl=", "").trim();
+      let cleanToken = surl.replace(/^.*\/(?:s|v)\//, "").replace(/.*[?&](?:surl|v|s)=/, "").trim();
       if (cleanToken.includes("?")) cleanToken = cleanToken.split("?")[0];
       if (cleanToken.includes("&")) cleanToken = cleanToken.split("&")[0];
       const formattedToken = cleanToken.startsWith("1") ? cleanToken : "1" + cleanToken;

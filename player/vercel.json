@@ -1,16 +1,15 @@
 {
-  "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/v/:path*",
+      "source": "/v/(.*)",
       "destination": "/index.html"
     },
     {
-      "source": "/s/:path*",
+      "source": "/s/(.*)",
       "destination": "/index.html"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!style\\.css|app\\.js|favicon\\.ico).*)",
       "destination": "/index.html"
     }
   ]
