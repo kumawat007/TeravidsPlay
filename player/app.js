@@ -1619,7 +1619,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setDownloadTargets(mp4Url, title, Boolean(mp4Url));
 
-        if (urlParams.get('nodl') === '1' && !mp4Url) {
+        const hasPlayableHls = hlsEntries.length > 0;
+        if (urlParams.get('nodl') === '1' && !mp4Url && hasPlayableHls) {
           showToast('Direct MP4 unavailable — streaming in HD!');
         } else if (urlParams.get('dl') === '1' && mp4Url) {
           const dlTarget = toProxyUrl(mp4Url, { dl: true, filename: title });
@@ -1645,6 +1646,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Native HLS Safari fallback if Hls.js isn't supported
         if (allCandidates.length === 0 && hlsEntries[0]?.url) {
           allCandidates.push(...buildCandidatesForSingleUrl(hlsEntries[0].url));
+        }
+
+        if (allCandidates.length === 0) {
+          showError(
+            'Stream Temporarily Unavailable',
+            'TeraBox stream servers are busy or require verification right now. Tap Try Again or Open Directly below.'
+          );
+          return;
         }
 
         startCandidateQueue(allCandidates);

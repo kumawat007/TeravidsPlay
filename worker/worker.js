@@ -307,6 +307,16 @@ function pickFirstPlayableVideo(videos) {
   return playable.sort((a, b) => Number(b.size || 0) - Number(a.size || 0))[0];
 }
 
+async function fetchWithTimeout(resource, options = {}, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(resource, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Queries www.terabox.app directly using sharing/link (with sharing/embed fallback) + share/list.
  */
@@ -329,27 +339,35 @@ async function resolveViaTeraBoxApp(shortToken, env = {}) {
   };
 
   try {
-    let pageResp = await fetch(`https://www.terabox.app/sharing/link?surl=${encodeURIComponent(shortToken)}`, {
-      headers: {
-        "User-Agent": DEFAULT_UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        ...(ndus ? { Cookie: `ndus=${ndus}; lang=en` } : {}),
-      },
-    });
-    let setCookie = pageResp.ok ? (pageResp.headers.get("set-cookie") || "") : "";
-    let html = pageResp.ok ? await pageResp.text() : "";
-
-    // If sharing/link returned short JSON verification challenge, try sharing/embed for jsToken + session cookies
-    if (!pageResp.ok || html.length < 1000) {
-      const embedResp = await fetch(`https://www.terabox.app/sharing/embed?surl=${encodeURIComponent(shortToken)}`, {
+    let pageResp = await fetchWithTimeout(
+      `https://www.terabox.app/sharing/link?surl=${encodeURIComponent(shortToken)}`,
+      {
         headers: {
           "User-Agent": DEFAULT_UA,
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.9",
           ...(ndus ? { Cookie: `ndus=${ndus}; lang=en` } : {}),
         },
-      });
+      },
+      5000
+    );
+    let setCookie = pageResp.ok ? (pageResp.headers.get("set-cookie") || "") : "";
+    let html = pageResp.ok ? await pageResp.text() : "";
+
+    // If sharing/link returned short JSON verification challenge, try sharing/embed for jsToken + session cookies
+    if (!pageResp.ok || html.length < 1000) {
+      const embedResp = await fetchWithTimeout(
+        `https://www.terabox.app/sharing/embed?surl=${encodeURIComponent(shortToken)}`,
+        {
+          headers: {
+            "User-Agent": DEFAULT_UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            ...(ndus ? { Cookie: `ndus=${ndus}; lang=en` } : {}),
+          },
+        },
+        5000
+      );
       if (embedResp.ok) {
         pageResp = embedResp;
         setCookie = embedResp.headers.get("set-cookie") || setCookie;
@@ -394,9 +412,11 @@ async function resolveViaTeraBoxApp(shortToken, env = {}) {
       const cookieHeader = buildCookieHeader(setCookie);
       if (cookieHeader) listHeaders["Cookie"] = cookieHeader;
 
-      const listResp = await fetch(`https://www.terabox.app/share/list?${qs.toString()}`, {
-        headers: listHeaders,
-      });
+      const listResp = await fetchWithTimeout(
+        `https://www.terabox.app/share/list?${qs.toString()}`,
+        { headers: listHeaders },
+        5000
+      );
       if (!listResp.ok) return null;
       return await listResp.json();
     };
@@ -429,6 +449,36 @@ async function resolveViaTeraBoxApp(shortToken, env = {}) {
   }
 }
 
+async function fetchShortUrlInfoMeta(shortToken, fallbackThumb = "") {
+  if (!shortToken) return null;
+  try {
+    const infoResp = await fetchWithTimeout(
+      `https://1024terabox.com/api/shorturlinfo?shorturl=${encodeURIComponent(shortToken)}&root=1`,
+      {
+        headers: {
+          "User-Agent": DEFAULT_UA,
+          "Referer": "https://1024terabox.com/",
+          "Accept": "application/json",
+        },
+      },
+      5000
+    );
+    if (!infoResp.ok) return null;
+    const infoData = await infoResp.json();
+    if (!Array.isArray(infoData.list) || infoData.list.length === 0) return null;
+    const item = pickBestMediaItem(infoData.list);
+    if (!item || (!item.dlink && !item.server_filename)) return null;
+    return {
+      title: item.server_filename || "TeraBox Video",
+      size: Number(item.size || 0),
+      thumbnailUrl: item.thumbs?.url3 || item.thumbs?.url2 || item.thumbs?.url1 || fallbackThumb || "",
+      stream_url: item.dlink || "",
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 /**
  * Shared stream & metadata resolver used by /api/resolve, /dl/:surl, and /webhook.
  */
@@ -455,7 +505,8 @@ async function resolveTeraBoxStream(surlOrUrl, env = {}) {
   pushUnique(`https://teraboxapp.com/s/${shareToken}`);
 
   const debugLogs = [];
-  let iteraplayBlocked = false;
+  const tbAppPromise = resolveViaTeraBoxApp(shortToken, env);
+  const shortInfoPromise = fetchShortUrlInfoMeta(shortToken);
 
   const queryIteraplayCandidate = async (candidate, timeoutMs, siblingControllers = []) => {
     const controller = new AbortController();
@@ -487,19 +538,14 @@ async function resolveTeraBoxStream(surlOrUrl, env = {}) {
           }
           const best = pickFirstPlayableVideo(data.videos);
           if (best && !best.thumbnailUrl) {
-            const meta = await resolveViaTeraBoxApp(shortToken, env);
-            if (meta && meta.thumbnailUrl) best.thumbnailUrl = meta.thumbnailUrl;
+            const [tbMeta, siMeta] = await Promise.all([tbAppPromise, shortInfoPromise]);
+            best.thumbnailUrl = tbMeta?.thumbnailUrl || siMeta?.thumbnailUrl || "";
           }
           if (best && best !== data.videos[0]) {
             data.videos = [best, ...data.videos.filter((v) => v !== best)];
           }
           return { ...data, surl: shareToken };
         }
-        if (data && (data.status === "captcha_required" || data.status === "rate_limited")) {
-          iteraplayBlocked = true;
-        }
-      } else if (resolveResp.status === 429 || resolveResp.status === 403) {
-        iteraplayBlocked = true;
       }
       throw new Error(`HTTP ${resolveResp.status}`);
     } catch (err) {
@@ -512,28 +558,24 @@ async function resolveTeraBoxStream(surlOrUrl, env = {}) {
     }
   };
 
-  // 1. Primary Engine: Race top 3 candidates in parallel (resolves in ~1.5-2.5s via fastest healthy mirror, 16s ceiling)
-  const primaryBatch = candidates.slice(0, 3);
+  // 1. Primary Engine: Race top 4 candidates in parallel with a 9.5s ceiling alongside metadata fetches
+  const raceBatch = candidates.slice(0, 4);
   const raceControllers = [];
   try {
     return await Promise.any(
-      primaryBatch.map((cand) => queryIteraplayCandidate(cand, 16000, raceControllers))
+      raceBatch.map((cand) => queryIteraplayCandidate(cand, 9500, raceControllers))
     );
-  } catch (e) {
-    // Fallback to any remaining candidates sequentially if not rate-limited/blocked
-    if (!iteraplayBlocked) {
-      for (const candidate of candidates.slice(3)) {
-        if (iteraplayBlocked) break;
-        try {
-          return await queryIteraplayCandidate(candidate, 10000);
-        } catch (err) {}
-      }
-    }
-  }
+  } catch (e) {}
 
-  // 2. Secondary Fallback: terabox.app sharing/link + embed + share/list
-  const tbAppMeta = await resolveViaTeraBoxApp(shortToken, env);
+  // 2. Secondary & Tertiary Fallbacks (already running in parallel above, so zero extra wait!)
+  const [tbAppMeta, shortInfoMeta] = await Promise.all([tbAppPromise, shortInfoPromise]);
   if (tbAppMeta && (tbAppMeta.stream_url || tbAppMeta.title || tbAppMeta.thumbnailUrl)) {
+    if (!tbAppMeta.thumbnailUrl && shortInfoMeta?.thumbnailUrl) {
+      tbAppMeta.thumbnailUrl = shortInfoMeta.thumbnailUrl;
+    }
+    if (!tbAppMeta.stream_url && shortInfoMeta?.stream_url) {
+      tbAppMeta.stream_url = shortInfoMeta.stream_url;
+    }
     return {
       success: true,
       surl: shareToken,
@@ -541,52 +583,19 @@ async function resolveTeraBoxStream(surlOrUrl, env = {}) {
     };
   }
 
-  // 3. Tertiary Fallback: 1024terabox shorturlinfo
-  try {
-    const infoResp = await fetch(
-      `https://1024terabox.com/api/shorturlinfo?shorturl=${encodeURIComponent(shortToken)}&root=1`,
-      {
-        headers: {
-          "User-Agent": DEFAULT_UA,
-          "Referer": "https://1024terabox.com/",
-          "Accept": "application/json",
-        },
-      }
-    );
-    if (infoResp.ok) {
-      const infoData = await infoResp.json();
-      if (Array.isArray(infoData.list) && infoData.list.length > 0) {
-        const item = pickBestMediaItem(infoData.list);
-        if (item && (item.dlink || item.server_filename)) {
-          return {
-            success: true,
-            surl: shareToken,
-            videos: [
-              {
-                title: item.server_filename || "TeraBox Video",
-                size: Number(item.size || 0),
-                thumbnailUrl:
-                  item.thumbs?.url3 || item.thumbs?.url2 || item.thumbs?.url1 || tbAppMeta?.thumbnailUrl || "",
-                stream_url: item.dlink || "",
-              },
-            ],
-          };
-        }
-      }
-    }
-  } catch (e) {}
+  if (shortInfoMeta) {
+    return {
+      success: true,
+      surl: shareToken,
+      videos: [shortInfoMeta],
+    };
+  }
 
   return {
     success: false,
     surl: shareToken,
     message: "Stream extraction failed",
-    partial_metadata: tbAppMeta
-      ? {
-          title: tbAppMeta.title,
-          size: tbAppMeta.size,
-          thumbnailUrl: tbAppMeta.thumbnailUrl,
-        }
-      : null,
+    partial_metadata: null,
     debug: debugLogs,
   };
 }
@@ -847,20 +856,12 @@ export default {
       }
 
       const resolved = await resolveTeraBoxStream(surl, env);
-      const tokens = parseSurlTokens(surl);
       let dlTarget = "";
       let fn = url.searchParams.get("fn") || `TeravidsPlay_${surl}.mp4`;
       if (resolved && resolved.success && Array.isArray(resolved.videos) && resolved.videos.length > 0) {
         const vid = resolved.videos[0];
         dlTarget = vid.original_quality_url || vid.stream_url || vid.mp4_url_fast || vid.mp4_url_slow || "";
         fn = url.searchParams.get("fn") || vid.title || fn;
-      }
-      if (!dlTarget && tokens?.shortToken) {
-        const directMeta = await resolveViaTeraBoxApp(tokens.shortToken, env);
-        if (directMeta && directMeta.stream_url) {
-          dlTarget = directMeta.stream_url;
-          if (!url.searchParams.get("fn") && directMeta.title) fn = directMeta.title;
-        }
       }
       if (dlTarget && isAllowedProxyUrl(dlTarget)) {
         try {

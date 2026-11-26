@@ -405,7 +405,8 @@ def handle_verify_fsub(call: types.CallbackQuery):
 # ==============================================================
 @bot.message_handler(commands=["start", "help"])
 def handle_start(message: types.Message):
-    if message.chat.type == "private" and not is_user_subscribed(message.from_user.id):
+    uid = message.from_user.id if message.from_user else None
+    if message.chat.type == "private" and uid is not None and not is_user_subscribed(uid):
         bot.reply_to(
             message,
             FORCE_SUB_TEXT,
@@ -423,7 +424,7 @@ def handle_start(message: types.Message):
         "• Web Audio API 300% volume booster.\n"
         "• Double-tap 10s seek & Auto-resume.\n"
         "• Zero Ads & Zero Popups.\n\n"
-        f"• <b>Target Channel:</b> <code>{TARGET_CHANNEL_ID or 'Not Set'}</code>\n"
+        f"• <b>Target Channel:</b> <code>{html.escape(TARGET_CHANNEL_ID or 'Not Set')}</code>\n"
         "• <b>Status Check:</b> /status"
     )
     bot.reply_to(message, welcome_text)

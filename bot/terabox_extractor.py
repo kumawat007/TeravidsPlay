@@ -357,7 +357,7 @@ class TeraBoxExtractor:
             try:
                 endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(target, safe='')}"
                 logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker (attempt {idx+1}): {endpoint}")
-                resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=16)
+                resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=20)
                 elapsed = time.time() - t0
                 self.last_diagnostics.append(f"Worker attempt {idx+1} -> status {resp.status_code} ({elapsed:.1f}s)")
                 logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code} ({elapsed:.2f}s)")
