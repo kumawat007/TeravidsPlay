@@ -10,6 +10,7 @@ Features:
 
 import os
 import re
+import time
 import logging
 import urllib.parse
 import ipaddress
@@ -198,21 +199,22 @@ def _pick_first_hls_url(streams: Any) -> Optional[str]:
 def _parse_edge_video_payload(video: Dict[str, Any], source_name: str) -> Optional[Dict[str, Any]]:
     """Normalizes the JSON schema returned by Worker/iTeraPlay engines into TeravidsPlay format."""
     title = video.get("title", "TeraBox Video")
-    size = video.get("size", 0)
+    size = int(video.get("size") or 0)
     stream_url = video.get("original_quality_url") or video.get("stream_url") or ""
 
     hls_url = _pick_first_hls_url(video.get("fast_stream_url")) or _pick_first_hls_url(video.get("hls_url"))
-    thumb = video.get("thumbnailUrl")
+    thumb = video.get("thumbnailUrl") or video.get("thumbnail") or video.get("thumb")
     quality = video.get("quality", "HD")
 
-    if stream_url or hls_url:
+    has_real_name = bool(title and title not in ["TeraBox Video", "TeraBox Video Stream"])
+    if stream_url or hls_url or has_real_name or thumb:
         return {
             "success": True,
             "title": title,
             "size_bytes": size,
-            "size_formatted": format_bytes(size),
+            "size_formatted": format_bytes(size) if size > 0 else "HD Stream",
             "thumbnail": thumb,
-            "stream_url": stream_url or hls_url,
+            "stream_url": stream_url or hls_url or "",
             "hls_url": hls_url,
             "download_url": stream_url or "",
             "quality": quality,
@@ -333,43 +335,70 @@ class TeraBoxExtractor:
     def resolve_via_worker_engine(self, surl_or_url: str) -> Optional[Dict[str, Any]]:
         """
         Primary Engine for Cloud & Datacenter Deployments (Render / Koyeb / VPS):
-        Queries the Cloudflare Edge Worker API with reliable 12s timeout to fetch full metadata.
+        Queries the Cloudflare Edge Worker API with reliable timeout to fetch full metadata.
+        Includes automatic fallback targets and retry delay for cold async edge imports.
         """
         if not self.worker_url:
             self.last_diagnostics.append("Worker Engine skipped: worker_url is empty")
             return None
-        try:
-            endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(surl_or_url, safe='')}"
-            logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker: {endpoint}")
-            resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=12)
-            self.last_diagnostics.append(f"Worker -> status {resp.status_code}")
-            logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code}")
 
-            if resp.text:
-                try:
-                    data = resp.json()
-                except Exception:
-                    data = {}
+        # Build candidate query targets (clean URL first, then bare token)
+        raw_token, share_token, short_token = self.parse_surl_pair(surl_or_url)
+        targets = [surl_or_url]
+        if share_token and share_token not in targets:
+            targets.append(share_token)
+        if raw_token and raw_token not in targets:
+            targets.append(raw_token)
+
+        for attempt, target in enumerate(targets):
+            try:
+                endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(target, safe='')}"
+                logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker (attempt {attempt+1}): {endpoint}")
+                resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=12)
+                self.last_diagnostics.append(f"Worker attempt {attempt+1} -> status {resp.status_code}")
+                logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code}")
+
+                data = {}
+                if resp.text:
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        data = {}
 
                 if resp.status_code == 200 and data.get("success") and data.get("videos"):
                     parsed = _parse_edge_video_payload(data["videos"][0], "Cloudflare Edge Engine")
                     if parsed:
                         logger.info(f"[TeraBoxExtractor] Resolved via Worker: '{parsed['title']}' ({parsed['size_formatted']})")
                         return parsed
-                    self.last_diagnostics.append("Worker video object missing playable URL")
-                else:
-                    partial = data.get("partial_metadata")
-                    if partial:
-                        return {
-                            "success": False,
-                            "partial_metadata": partial,
-                            "diagnostics": self.last_diagnostics,
-                        }
-                    self.last_diagnostics.append(f"Worker failure ({resp.status_code}): {resp.text[:160]}")
-        except Exception as e:
-            err_msg = f"Worker exception: {type(e).__name__}: {e}"
-            self.last_diagnostics.append(err_msg)
-            logger.error(f"[TeraBoxExtractor] {err_msg}")
+
+                partial = data.get("partial_metadata")
+                if partial and (partial.get("title") or partial.get("thumbnailUrl")):
+                    title = partial.get("title", "TeraBox Video")
+                    size = int(partial.get("size") or 0)
+                    thumb = partial.get("thumbnailUrl")
+                    logger.info(f"[TeraBoxExtractor] Resolved partial metadata via Worker: '{title}'")
+                    return {
+                        "success": True,
+                        "title": title,
+                        "size_bytes": size,
+                        "size_formatted": format_bytes(size) if size > 0 else "1080p HD",
+                        "thumbnail": thumb,
+                        "stream_url": "",
+                        "hls_url": None,
+                        "download_url": "",
+                        "quality": "HD 1080p",
+                        "source": "Cloudflare Edge Engine (Metadata)",
+                    }
+
+                # If first attempt returned 404, pause 1.5s to let iTeraPlay async import complete
+                if attempt == 0 and len(targets) > 1 and resp.status_code == 404:
+                    time.sleep(1.5)
+
+            except Exception as e:
+                err_msg = f"Worker exception (attempt {attempt+1}): {type(e).__name__}: {e}"
+                self.last_diagnostics.append(err_msg)
+                logger.warning(f"[TeraBoxExtractor] {err_msg}")
+
         return None
 
     def resolve_via_highspeed_engine(self, share_url: str) -> Tuple[Optional[Dict[str, Any]], bool]:

@@ -538,9 +538,21 @@ document.addEventListener('DOMContentLoaded', () => {
     updatePlayIcons();
   }
 
+  let lastCenterTapTimestamp = 0;
   function handleCenterPlayTap(e) {
-    e.preventDefault();
-    e.stopPropagation();
+    const now = Date.now();
+    if (now - lastCenterTapTimestamp < 350) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+    lastCenterTapTimestamp = now;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     togglePlay();
     showControls(3500);
   }
@@ -548,7 +560,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (playBtn) playBtn.addEventListener('click', togglePlay);
   if (centerPlayBtn) {
     centerPlayBtn.addEventListener('click', handleCenterPlayTap);
-    centerPlayBtn.addEventListener('touchend', handleCenterPlayTap);
   }
   videoElement.addEventListener('play', updatePlayIcons);
   videoElement.addEventListener('pause', updatePlayIcons);

@@ -488,7 +488,7 @@ async function resolveTeraBoxStream(surlOrUrl) {
 
   // 2. Secondary Fallback: terabox.app sharing/link + share/list
   const tbAppMeta = await resolveViaTeraBoxApp(shortToken);
-  if (tbAppMeta && tbAppMeta.stream_url) {
+  if (tbAppMeta && (tbAppMeta.stream_url || tbAppMeta.title || tbAppMeta.thumbnailUrl)) {
     return {
       success: true,
       surl: shareToken,
@@ -512,7 +512,7 @@ async function resolveTeraBoxStream(surlOrUrl) {
       const infoData = await infoResp.json();
       if (Array.isArray(infoData.list) && infoData.list.length > 0) {
         const item = pickBestMediaItem(infoData.list);
-        if (item && item.dlink) {
+        if (item && (item.dlink || item.server_filename)) {
           return {
             success: true,
             surl: shareToken,
@@ -522,7 +522,7 @@ async function resolveTeraBoxStream(surlOrUrl) {
                 size: Number(item.size || 0),
                 thumbnailUrl:
                   item.thumbs?.url3 || item.thumbs?.url2 || item.thumbs?.url1 || tbAppMeta?.thumbnailUrl || "",
-                stream_url: item.dlink,
+                stream_url: item.dlink || "",
               },
             ],
           };
@@ -805,8 +805,21 @@ export default {
       }
 
       const result = await resolveTeraBoxStream(surl);
+      const hasMeta = result.partial_metadata && (result.partial_metadata.title || result.partial_metadata.thumbnailUrl);
+      if (!result.success && hasMeta) {
+        result.success = true;
+        result.videos = [
+          {
+            title: result.partial_metadata.title || "TeraBox Video",
+            size: Number(result.partial_metadata.size || 0),
+            thumbnailUrl: result.partial_metadata.thumbnailUrl || "",
+            stream_url: "",
+            source: "terabox.app",
+          },
+        ];
+      }
       return new Response(JSON.stringify(result), {
-        status: result.success ? 200 : 404,
+        status: (result.success || hasMeta) ? 200 : 404,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }

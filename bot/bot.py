@@ -101,24 +101,32 @@ def _referer_for_url(target_url: str) -> str:
     return "https://www.terabox.com/"
 
 
-def download_image_bytes(thumb_url: str, timeout: int = 10):
+def download_image_bytes(thumb_url: str, timeout: int = 8):
     """
     Downloads image bytes using contextual headers so Telegram receives direct binary upload.
-    Falls back to Cloudflare Worker proxy if upstream CDN DNS/hotlink fails.
+    Routes blocked Replit/iTeraPlay CDN hosts through Cloudflare Worker proxy first for instant loading.
     """
     if not thumb_url or not thumb_url.startswith("http"):
         return None
 
-    attempts = [
-        (thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"})
-    ]
+    attempts = []
+    is_blocked_host = any(h in thumb_url.lower() for h in ("replit.dev", "replit.app", "repl.co", "iteraplay", "qzz.io"))
+
     if extractor.worker_url and not thumb_url.startswith(extractor.worker_url):
         proxied = f"{extractor.worker_url}/?url={urllib.parse.quote(thumb_url, safe='')}"
-        attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": "image/*,*/*;q=0.8"}))
+        if is_blocked_host:
+            attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}))
+            attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": "image/*,*/*;q=0.8"}))
+        else:
+            attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}))
+            attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": "image/*,*/*;q=0.8"}))
+    else:
+        attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}))
 
     for fetch_url, hdrs in attempts:
         try:
-            resp = requests.get(fetch_url, headers=hdrs, timeout=timeout)
+            curr_timeout = 4 if (not is_blocked_host and fetch_url == thumb_url) else timeout
+            resp = requests.get(fetch_url, headers=hdrs, timeout=curr_timeout)
             ctype = (resp.headers.get("Content-Type") or "").lower()
             if resp.status_code == 200 and len(resp.content) > 500 and (not ctype or "text/html" not in ctype):
                 bio = io.BytesIO(resp.content)
