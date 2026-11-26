@@ -1,10 +1,27 @@
 // TeravidsPlay — Official Integrated Cinema Player Engine
-// Features: Full-Width Theater Mode, In-Viewport YouTube Controls,
-// Interactive Settings Popover (Speed, Quality, Boost, Fit),
-// Web Audio 300% Boost, 4X Ultra Turbo Long-Press, Telegram Auto-Unlock,
-// Triple-Tier Stream Decoder with Cloudflare Edge Proxy Fallback.
+// Features: Full-Width Theater Mode, In-Viewport Transparent Controls,
+// Interactive Settings Popover (Speed, Live Quality Switcher, Boost, Fit),
+// Web Audio 300% Boost (with CORS-safe Worker Proxy), 4X Ultra Turbo Long-Press,
+// Telegram Auto-Unlock, Guaranteed Poster Preview, and Multi-Tier Stream Fallback.
 
 document.addEventListener('DOMContentLoaded', () => {
+  const WORKER_BASE = 'https://teravidsplay.proxyking.workers.dev';
+  const PROXY_REQUIRED_HOSTS = [
+    'replit.dev',
+    'replit.app',
+    'repl.co',
+    'terabox.com',
+    'terabox.app',
+    'teraboxapp.com',
+    '1024tera.com',
+    '1024terabox.com',
+    'baidupcs.com',
+    'bdydns.com',
+    'teraboxcdn.com',
+    'iteraplay.in',
+    'iteraplay.com',
+  ];
+
   // 1. Telegram WebApp Integration & Auto-Unlock
   const tg = window.Telegram?.WebApp;
   if (tg) {
@@ -22,8 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const playerContainer = document.getElementById('playerContainer');
   const videoElement = document.getElementById('player');
-  const playerTopBar = document.getElementById('playerTopBar');
-  const playerBottomBar = document.getElementById('playerBottomBar');
+  const videoPosterOverlay = document.getElementById('videoPosterOverlay');
   const centerPlayBtn = document.getElementById('centerPlayBtn');
   const centerPlayIcon = document.getElementById('centerPlayIcon');
   const centerActionRipple = document.getElementById('centerActionRipple');
@@ -70,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const settingsMainView = document.getElementById('settingsMainView');
   const subviewSpeed = document.getElementById('subviewSpeed');
   const subviewQuality = document.getElementById('subviewQuality');
+  const qualityOptionsList = document.getElementById('qualityOptionsList');
   const subviewBoost = document.getElementById('subviewBoost');
   const subviewFit = document.getElementById('subviewFit');
 
@@ -133,23 +150,72 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
   }
 
+  function formatBytes(bytes) {
+    const n = Number(bytes);
+    if (!n || n <= 0) return '';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    let val = n;
+    while (val >= 1024 && i < units.length - 1) {
+      val /= 1024;
+      i++;
+    }
+    return `${val.toFixed(1)} ${units[i]}`;
+  }
+
+  let toastTimer = null;
   function showToast(text) {
     if (resumeToast && resumeToastText) {
+      clearTimeout(toastTimer);
       resumeToastText.textContent = text;
       resumeToast.style.display = 'block';
-      setTimeout(() => { resumeToast.style.display = 'none'; }, 2400);
+      toastTimer = setTimeout(() => { resumeToast.style.display = 'none'; }, 2400);
     }
+  }
+
+  function shouldProxyUrl(rawUrl) {
+    if (!rawUrl || !rawUrl.startsWith('http')) return false;
+    if (rawUrl.startsWith(WORKER_BASE)) return false;
+    try {
+      const host = new URL(rawUrl).hostname.toLowerCase();
+      return PROXY_REQUIRED_HOSTS.some((d) => host === d || host.endsWith('.' + d));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function toProxyUrl(rawUrl, options = {}) {
+    if (!rawUrl || rawUrl.startsWith(WORKER_BASE)) return rawUrl;
+    const params = new URLSearchParams({ url: rawUrl });
+    if (options.dl) params.set('dl', '1');
+    if (options.filename) params.set('filename', options.filename);
+    return `${WORKER_BASE}/?${params.toString()}`;
+  }
+
+  function normalizeSurlToken(rawVal) {
+    if (!rawVal) return '';
+    const mPath = rawVal.match(/\/(?:s|v)\/([a-zA-Z0-9_-]+)/);
+    if (mPath) return mPath[1];
+    const mQuery = rawVal.match(/[?&](?:surl|v|s)=([a-zA-Z0-9_-]+)/);
+    if (mQuery) return mQuery[1];
+    return rawVal.split(/[?&#]/)[0].trim();
   }
 
   // 3. Parse Parameters & Telegram Auto-Unlock
   const urlParams = new URLSearchParams(window.location.search);
-  let vId = urlParams.get('v') || urlParams.get('s') || '';
-  if (!vId) {
+  const rawInputUrl = urlParams.get('url') || '';
+  let rawVId = urlParams.get('v') || urlParams.get('s') || '';
+  if (!rawVId) {
     const pathMatch = window.location.pathname.match(/\/(v|s)\/([a-zA-Z0-9_-]+)/);
-    if (pathMatch) {
-      vId = pathMatch[2];
-    }
+    if (pathMatch) rawVId = pathMatch[2];
   }
+  if (!rawVId && rawInputUrl) {
+    rawVId = rawInputUrl;
+  }
+
+  const resolveInput = rawInputUrl || rawVId;
+  const vId = normalizeSurlToken(rawVId);
+
   let rawStream = urlParams.get('stream') || '';
   const rawTitle = urlParams.get('title') || '';
   const rawSize = urlParams.get('size') || '';
@@ -160,10 +226,49 @@ document.addEventListener('DOMContentLoaded', () => {
     try { rawStream = atob(rawStream.slice(4)); } catch (e) {}
   }
 
-  let streamUrl = safeDecode(rawStream);
+  const streamUrl = safeDecode(rawStream);
   const cleanTitle = safeDecode(rawTitle);
   const cleanSize = safeDecode(rawSize);
   const cleanThumb = safeDecode(rawThumb);
+
+  // Guaranteed Poster Overlay Helpers (works even when <video poster> fails on mobile WebViews or blocked hosts)
+  let hasRenderedVideoFrame = false;
+  function setVideoPoster(rawThumbUrl) {
+    if (!rawThumbUrl || !rawThumbUrl.startsWith('http')) return;
+    const primarySrc = shouldProxyUrl(rawThumbUrl) ? toProxyUrl(rawThumbUrl) : rawThumbUrl;
+    const fallbackSrc = primarySrc === rawThumbUrl ? toProxyUrl(rawThumbUrl) : rawThumbUrl;
+
+    videoElement.poster = primarySrc;
+
+    if (videoPosterOverlay) {
+      videoPosterOverlay.dataset.fallbackAttempted = '0';
+      videoPosterOverlay.onerror = () => {
+        if (videoPosterOverlay.dataset.fallbackAttempted === '0' && fallbackSrc && fallbackSrc !== videoPosterOverlay.src) {
+          videoPosterOverlay.dataset.fallbackAttempted = '1';
+          videoPosterOverlay.src = fallbackSrc;
+        } else {
+          videoPosterOverlay.style.display = 'none';
+        }
+      };
+      videoPosterOverlay.onload = () => {
+        if (!hasRenderedVideoFrame) {
+          videoPosterOverlay.style.display = 'block';
+        }
+      };
+      videoPosterOverlay.style.objectFit = videoElement.style.objectFit || 'contain';
+      videoPosterOverlay.src = primarySrc;
+      if (!hasRenderedVideoFrame) {
+        videoPosterOverlay.style.display = 'block';
+      }
+    }
+  }
+
+  function hideVideoPoster() {
+    hasRenderedVideoFrame = true;
+    if (videoPosterOverlay) {
+      videoPosterOverlay.style.display = 'none';
+    }
+  }
 
   // Auto-Unlock Telegram Gate if user came from Telegram channel
   const UNLOCK_KEY = 'teravids_channel_unlocked';
@@ -203,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // View Switching
-  const hasMedia = Boolean(vId || streamUrl);
+  const hasMedia = Boolean(vId || resolveInput || streamUrl);
 
   function activateHomeView() {
     if (homePage) homePage.style.display = 'flex';
@@ -235,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (cleanThumb) {
-      videoElement.poster = cleanThumb;
+      setVideoPoster(cleanThumb);
     }
   } else {
     activateHomeView();
@@ -245,6 +350,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let controlsTimeout = null;
   let tapTimer = null;
   let tapCount = 0;
+  let lastTapSide = null;
+  let suppressNextClick = false;
+  let suppressResetTimer = null;
+
+  function markSuppressClick() {
+    suppressNextClick = true;
+    clearTimeout(suppressResetTimer);
+    suppressResetTimer = setTimeout(() => { suppressNextClick = false; }, 350);
+  }
 
   function isControlsVisible() {
     return !playerContainer.classList.contains('controls-hidden');
@@ -291,16 +405,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Center Ripple Animation (YouTube-Style Play / Pause Feedback)
+  let centerRippleTimer = null;
   function triggerCenterRipple(type) {
     if (!centerActionRipple) return;
+    clearTimeout(centerRippleTimer);
     centerActionRipple.innerHTML = type === 'play'
-      ? '<svg width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>'
-      : '<svg width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+      ? '<svg aria-hidden="true" width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>'
+      : '<svg aria-hidden="true" width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
     centerActionRipple.style.display = 'flex';
     centerActionRipple.classList.remove('animate');
     void centerActionRipple.offsetWidth;
     centerActionRipple.classList.add('animate');
-    setTimeout(() => {
+    centerRippleTimer = setTimeout(() => {
       centerActionRipple.classList.remove('animate');
       setTimeout(() => {
         centerActionRipple.style.display = 'none';
@@ -308,48 +424,80 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 320);
   }
 
+  function getTapRatio(e) {
+    const rect = playerContainer.getBoundingClientRect();
+    const clientX = (e.clientX !== undefined && e.clientX !== 0)
+      ? e.clientX
+      : ((e.changedTouches && e.changedTouches[0]?.clientX) || (e.touches && e.touches[0]?.clientX) || (rect.left + rect.width / 2));
+    const clientY = (e.clientY !== undefined && e.clientY !== 0)
+      ? e.clientY
+      : ((e.changedTouches && e.changedTouches[0]?.clientY) || (e.touches && e.touches[0]?.clientY) || (rect.top + rect.height / 2));
+
+    if (isMobileLandscapeRotated) {
+      return Math.max(0, Math.min(1, (clientY - rect.top) / (rect.height || 1)));
+    }
+    return Math.max(0, Math.min(1, (clientX - rect.left) / (rect.width || 1)));
+  }
+
   // Unified Mobile/Desktop Tap & Gesture System:
   // - Tap in Center Zone (25% - 75% width): Toggles Play / Pause with instant animated ripple!
   // - Tap in Left (<25%): 1 Tap toggles controls, Double Tap rewinds 10s!
   // - Tap in Right (>75%): 1 Tap toggles controls, Double Tap fast-forwards 10s!
   playerContainer.addEventListener('click', (e) => {
-    // If clicking a button, input, link, or popovers, allow direct event and keep controls alive
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover') || e.target.closest('.channel-gate-card') || e.target.closest('.error-card')) {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
+
+    if (
+      e.target.closest('button') ||
+      e.target.closest('input') ||
+      e.target.closest('a') ||
+      e.target.closest('.player-overlay-top') ||
+      e.target.closest('.player-overlay-bottom') ||
+      e.target.closest('.scrubber-container') ||
+      e.target.closest('.settings-popover') ||
+      e.target.closest('.channel-gate-card') ||
+      e.target.closest('.error-card')
+    ) {
       showControls(4000);
       return;
     }
 
-    const rect = playerContainer.getBoundingClientRect();
-    const touchX = (e.clientX !== undefined && e.clientX !== 0)
-      ? e.clientX
-      : ((e.changedTouches && e.changedTouches[0] && e.changedTouches[0].clientX) || (e.touches && e.touches[0] && e.touches[0].clientX) || (rect.left + rect.width / 2));
-    const clickX = touchX - rect.left;
-    const ratio = clickX / rect.width;
-
+    const ratio = getTapRatio(e);
     const isCenterZone = ratio >= 0.25 && ratio <= 0.75;
-    const isLeftSide = ratio < 0.25;
-    const isRightSide = ratio > 0.75;
+    const side = ratio < 0.25 ? 'left' : (ratio > 0.75 ? 'right' : 'center');
 
-    // Center zone tap immediately toggles Play / Pause!
     if (isCenterZone) {
+      tapCount = 0;
+      lastTapSide = null;
+      clearTimeout(tapTimer);
       togglePlay();
       showControls(3500);
       return;
     }
 
+    if (lastTapSide && lastTapSide !== side) {
+      tapCount = 0;
+      clearTimeout(tapTimer);
+    }
+    lastTapSide = side;
     tapCount++;
+
     if (tapCount === 1) {
       tapTimer = setTimeout(() => {
         tapCount = 0;
+        lastTapSide = null;
         toggleControls();
       }, 260);
-    } else if (tapCount === 2) {
+    } else if (tapCount >= 2) {
       clearTimeout(tapTimer);
       tapCount = 0;
-      if (isRightSide) {
+      lastTapSide = null;
+      if (side === 'right') {
         videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
         showRipple('right');
-      } else if (isLeftSide) {
+      } else {
         videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
         showRipple('left');
       }
@@ -381,7 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
       videoElement.play().then(() => {
         triggerCenterRipple('play');
       }).catch(() => {
-        triggerCenterRipple('play');
+        updatePlayIcons();
       });
     } else {
       videoElement.pause();
@@ -420,13 +568,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  let rippleTimerLeft = null;
+  let rippleTimerRight = null;
   function showRipple(dir) {
     if (dir === 'left' && rippleLeft) {
+      clearTimeout(rippleTimerLeft);
       rippleLeft.style.display = 'flex';
-      setTimeout(() => { rippleLeft.style.display = 'none'; }, 380);
+      rippleTimerLeft = setTimeout(() => { rippleLeft.style.display = 'none'; }, 380);
     } else if (dir === 'right' && rippleRight) {
+      clearTimeout(rippleTimerRight);
       rippleRight.style.display = 'flex';
-      setTimeout(() => { rippleRight.style.display = 'none'; }, 380);
+      rippleTimerRight = setTimeout(() => { rippleRight.style.display = 'none'; }, 380);
     }
   }
 
@@ -441,7 +593,6 @@ document.addEventListener('DOMContentLoaded', () => {
     currentTimeElem.textContent = formatTime(videoElement.currentTime);
     durationTimeElem.textContent = formatTime(videoElement.duration);
 
-    // Update Buffer
     if (videoElement.buffered.length > 0) {
       for (let i = videoElement.buffered.length - 1; i >= 0; i--) {
         if (videoElement.buffered.start(i) <= videoElement.currentTime) {
@@ -460,23 +611,34 @@ document.addEventListener('DOMContentLoaded', () => {
     checkResume();
   });
 
-  function getScrubberX(e) {
-    if (e.touches && e.touches.length > 0) return e.touches[0].clientX;
-    if (e.changedTouches && e.changedTouches.length > 0) return e.changedTouches[0].clientX;
-    return e.clientX || 0;
+  function getScrubberPointer(e) {
+    const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+    return {
+      x: touch ? touch.clientX : (e.clientX || 0),
+      y: touch ? touch.clientY : (e.clientY || 0),
+    };
+  }
+
+  function getScrubberPct(e) {
+    const rect = scrubberContainer.getBoundingClientRect();
+    const pt = getScrubberPointer(e);
+    if (isMobileLandscapeRotated) {
+      const rel = Math.max(0, Math.min(pt.y - rect.top, rect.height));
+      return rel / (rect.height || 1);
+    }
+    const rel = Math.max(0, Math.min(pt.x - rect.left, rect.width));
+    return rel / (rect.width || 1);
   }
 
   function seekToPosition(e) {
-    const rect = scrubberContainer.getBoundingClientRect();
-    const clickX = Math.max(0, Math.min(getScrubberX(e) - rect.left, rect.width));
-    const pct = clickX / rect.width;
+    if (!videoElement.duration) return;
+    const pct = getScrubberPct(e);
     videoElement.currentTime = pct * videoElement.duration;
     scrubberProgress.style.width = `${pct * 100}%`;
     scrubberThumb.style.left = `${pct * 100}%`;
     currentTimeElem.textContent = formatTime(videoElement.currentTime);
   }
 
-  // Mouse seek
   scrubberContainer.addEventListener('mousedown', (e) => {
     isScrubbing = true;
     seekToPosition(e);
@@ -490,7 +652,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isScrubbing) isScrubbing = false;
   });
 
-  // Touch seek for Mobile
   scrubberContainer.addEventListener('touchstart', (e) => {
     isScrubbing = true;
     showControls(5000);
@@ -500,12 +661,10 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('touchmove', (e) => {
     if (isScrubbing) {
       seekToPosition(e);
-      const rect = scrubberContainer.getBoundingClientRect();
-      const hoverX = Math.max(0, Math.min(getScrubberX(e) - rect.left, rect.width));
-      const pct = hoverX / rect.width;
       if (videoElement.duration) {
+        const pct = getScrubberPct(e);
         scrubberTooltip.textContent = formatTime(pct * videoElement.duration);
-        scrubberTooltip.style.left = `${hoverX}px`;
+        scrubberTooltip.style.left = `${pct * 100}%`;
         scrubberTooltip.style.display = 'block';
       }
     }
@@ -520,12 +679,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   scrubberContainer.addEventListener('mousemove', (e) => {
-    const rect = scrubberContainer.getBoundingClientRect();
-    const hoverX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    const pct = hoverX / rect.width;
     if (videoElement.duration) {
+      const pct = getScrubberPct(e);
       scrubberTooltip.textContent = formatTime(pct * videoElement.duration);
-      scrubberTooltip.style.left = `${hoverX}px`;
+      scrubberTooltip.style.left = `${pct * 100}%`;
       scrubberTooltip.style.display = 'block';
     }
   });
@@ -560,32 +717,63 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 9. Web Audio API 300% Sound Booster (Integrated)
+  // 9. Web Audio API 300% Sound Booster (CORS-Safe via Worker Proxy)
   let audioCtx = null;
   let gainNode = null;
+  let mediaSourceAttached = false;
   let audioBoostLevel = 1.0;
   const boostLevels = [1.0, 1.5, 2.0, 3.0];
   let boostIndex = 0;
 
+  function ensureCorsForBoost() {
+    // Web Audio API createMediaElementSource outputs silence if a cross-origin video has no CORS!
+    const currentSrc = videoElement.currentSrc || videoElement.src || '';
+    if (!videoElement.crossOrigin && currentSrc && !currentSrc.startsWith(WORKER_BASE) && !currentSrc.startsWith('blob:')) {
+      const resumeAt = videoElement.currentTime || 0;
+      const wasPlaying = !videoElement.paused;
+      const proxied = toProxyUrl(currentSrc);
+      videoElement.crossOrigin = 'anonymous';
+      videoElement.src = proxied;
+      videoElement.load();
+      videoElement.addEventListener('loadedmetadata', function onMeta() {
+        videoElement.removeEventListener('loadedmetadata', onMeta);
+        if (resumeAt > 1) videoElement.currentTime = resumeAt;
+        if (wasPlaying) videoElement.play().catch(() => {});
+      });
+    }
+  }
+
   function initAudioBooster() {
-    if (audioCtx) return;
+    if (audioCtx) return true;
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      audioCtx = new AudioContext();
-      const source = audioCtx.createMediaElementSource(videoElement);
-      gainNode = audioCtx.createGain();
-      gainNode.gain.value = audioBoostLevel;
-      source.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) return false;
+      ensureCorsForBoost();
+      if (!videoElement.crossOrigin && !(videoElement.currentSrc || '').startsWith('blob:')) {
+        // Defer AudioContext hook if CORS cannot be enabled safely
+        return false;
+      }
+      audioCtx = new AudioContextCtor();
+      if (!mediaSourceAttached) {
+        const source = audioCtx.createMediaElementSource(videoElement);
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = audioBoostLevel;
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        mediaSourceAttached = true;
+      }
+      return true;
     } catch (e) {
       console.warn('AudioContext notice:', e);
+      return false;
     }
   }
 
   function setBoostLevel(level) {
     audioBoostLevel = level;
-    initAudioBooster();
+    if (level > 1.0) {
+      initAudioBooster();
+    }
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     if (gainNode) gainNode.gain.value = audioBoostLevel;
     const label = `${Math.round(audioBoostLevel * 100)}%`;
@@ -593,15 +781,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (settingsCurrentBoost) settingsCurrentBoost.textContent = label;
     if (audioBoostBtn) audioBoostBtn.classList.toggle('active-pill', audioBoostLevel > 1.0);
 
-    // Update active check in boost subview
     document.querySelectorAll('#subviewBoost .option-item').forEach(el => {
       const b = parseFloat(el.getAttribute('data-boost'));
+      const cleanLabel = el.textContent.replace(' ✓', '').trim();
       if (b === audioBoostLevel) {
         el.classList.add('active-option');
-        el.innerHTML = `${el.textContent.replace(' ✓', '')} <span class="check">✓</span>`;
+        el.innerHTML = `${cleanLabel} <span class="check">✓</span>`;
       } else {
         el.classList.remove('active-option');
-        el.innerHTML = el.textContent.replace(' ✓', '');
+        el.textContent = cleanLabel;
       }
     });
 
@@ -622,16 +810,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setAspectMode(mode, label) {
     videoElement.style.objectFit = mode;
+    if (videoPosterOverlay) videoPosterOverlay.style.objectFit = mode;
     if (aspectRatioLabel) aspectRatioLabel.textContent = label;
     if (settingsCurrentFit) settingsCurrentFit.textContent = label;
 
     document.querySelectorAll('#subviewFit .option-item').forEach(el => {
+      const cleanLabel = el.textContent.replace(' ✓', '').trim();
       if (el.getAttribute('data-fit') === mode) {
         el.classList.add('active-option');
-        el.innerHTML = `${el.textContent.replace(' ✓', '')} <span class="check">✓</span>`;
+        el.innerHTML = `${cleanLabel} <span class="check">✓</span>`;
       } else {
         el.classList.remove('active-option');
-        el.innerHTML = el.textContent.replace(' ✓', '');
+        el.textContent = cleanLabel;
       }
     });
     showToast(`Aspect Ratio: ${label}`);
@@ -653,18 +843,62 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll('#subviewSpeed .option-item').forEach(el => {
       const spd = parseFloat(el.getAttribute('data-speed'));
+      const cleanLabel = el.textContent.replace(' ✓', '').trim();
       if (spd === val) {
         el.classList.add('active-option');
-        el.innerHTML = `${el.textContent.replace(' ✓', '')} <span class="check">✓</span>`;
+        el.innerHTML = `${cleanLabel} <span class="check">✓</span>`;
       } else {
         el.classList.remove('active-option');
-        el.innerHTML = el.textContent.replace(' ✓', '');
+        el.textContent = cleanLabel;
       }
     });
     showToast(`⚡ Speed: ${label}`);
   }
 
-  // 12. Settings Popover Submenu Navigation
+  // 12. Settings Popover Submenu Navigation & Dynamic Quality Control
+  let availableQualities = [];
+  let activeQualityId = 'auto';
+
+  function renderQualityOptions(items, selectedId) {
+    if (!qualityOptionsList) return;
+    qualityOptionsList.innerHTML = '';
+    const list = items.length ? items : [{ id: 'auto', label: 'Auto' }];
+    list.forEach((opt) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'option-item' + (opt.id === selectedId ? ' active-option' : '');
+      btn.setAttribute('data-quality', opt.id);
+      if (opt.id === selectedId) {
+        btn.innerHTML = `${opt.label} <span class="check">✓</span>`;
+        if (settingsCurrentQuality) settingsCurrentQuality.textContent = opt.label;
+      } else {
+        btn.textContent = opt.label;
+      }
+      btn.addEventListener('click', () => {
+        switchQuality(opt);
+        showSettingsMain();
+      });
+      qualityOptionsList.appendChild(btn);
+    });
+  }
+
+  function switchQuality(opt) {
+    activeQualityId = opt.id;
+    renderQualityOptions(availableQualities, activeQualityId);
+    if (opt.hlsLevel !== undefined && hlsInstance) {
+      hlsInstance.currentLevel = opt.hlsLevel;
+      showToast(`Quality: ${opt.label}`);
+      return;
+    }
+    if (opt.url) {
+      const resumeAt = videoElement.currentTime || 0;
+      const wasPlaying = !videoElement.paused;
+      const candidates = buildCandidatesForSingleUrl(opt.url);
+      startCandidateQueue(candidates, resumeAt, wasPlaying);
+      showToast(`Quality: ${opt.label}`);
+    }
+  }
+
   function showSettingsMain() {
     settingsTitle.textContent = 'Playback Settings';
     settingsMainView.style.display = 'block';
@@ -695,7 +929,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Light dismiss settings menu when tapping outside
   document.addEventListener('click', (e) => {
     if (settingsMenu && settingsMenu.style.display === 'block') {
       if (!settingsMenu.contains(e.target) && !settingsBtn.contains(e.target)) {
@@ -704,7 +937,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Row Clicks
   if (rowSpeed) {
     rowSpeed.addEventListener('click', () => {
       settingsTitle.textContent = 'Playback Speed';
@@ -737,46 +969,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Back Buttons
   document.querySelectorAll('.subview-back-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       showSettingsMain();
     });
   });
 
-  // Speed Option Select
   document.querySelectorAll('#subviewSpeed .option-item').forEach(item => {
     item.addEventListener('click', () => {
-      const spd = item.getAttribute('data-speed');
-      setSpeed(spd);
+      setSpeed(item.getAttribute('data-speed'));
       showSettingsMain();
     });
   });
 
-  // Quality Option Select
-  document.querySelectorAll('#subviewQuality .option-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const q = item.getAttribute('data-quality');
-      if (settingsCurrentQuality) settingsCurrentQuality.textContent = item.textContent.replace(' ✓', '');
-      document.querySelectorAll('#subviewQuality .option-item').forEach(el => {
-        el.classList.toggle('active-option', el === item);
-        el.innerHTML = el === item ? `${el.textContent.replace(' ✓', '')} <span class="check">✓</span>` : el.textContent.replace(' ✓', '');
-      });
-      showToast(`Quality: ${item.textContent.replace(' ✓', '')}`);
-      showSettingsMain();
-    });
-  });
-
-  // Boost Option Select
   document.querySelectorAll('#subviewBoost .option-item').forEach(item => {
     item.addEventListener('click', () => {
-      const b = parseFloat(item.getAttribute('data-boost'));
-      setBoostLevel(b);
+      setBoostLevel(parseFloat(item.getAttribute('data-boost')));
       showSettingsMain();
     });
   });
 
-  // Fit Option Select
   document.querySelectorAll('#subviewFit .option-item').forEach(item => {
     item.addEventListener('click', () => {
       const f = item.getAttribute('data-fit');
@@ -786,63 +998,61 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Close Settings on Click Outside
-  window.addEventListener('click', (e) => {
-    if (settingsMenu && settingsMenu.style.display === 'block' && !e.target.closest('.settings-popover') && !e.target.closest('#settingsBtn')) {
-      settingsMenu.style.display = 'none';
-    }
-  });
+  // 13. Fullscreen Toggle & Mobile Screen Rotation
+  let isMobileLandscapeRotated = false;
 
-  // 13. Fullscreen Toggle
+  function setCssRotation(active) {
+    isMobileLandscapeRotated = active;
+    if (active) {
+      playerContainer.classList.add('mobile-force-landscape');
+      document.body.classList.add('mobile-rotated-active');
+    } else {
+      playerContainer.classList.remove('mobile-force-landscape');
+      document.body.classList.remove('mobile-rotated-active');
+    }
+  }
+
   function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      if (playerContainer.requestFullscreen) playerContainer.requestFullscreen();
-      else if (videoElement.webkitEnterFullscreen) videoElement.webkitEnterFullscreen();
+    const fsElem = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fsElem) {
+      if (isMobileLandscapeRotated) setCssRotation(false);
+      if (playerContainer.requestFullscreen) {
+        playerContainer.requestFullscreen().catch(() => {});
+      } else if (playerContainer.webkitRequestFullscreen) {
+        playerContainer.webkitRequestFullscreen();
+      } else if (videoElement.webkitEnterFullscreen) {
+        videoElement.webkitEnterFullscreen();
+      }
       fullscreenIcon.innerHTML = '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>';
     } else {
-      if (document.exitFullscreen) document.exitFullscreen();
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
       fullscreenIcon.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>';
     }
   }
 
   if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
 
-  // 13.1 Video Screen Rotation (Only for Mobile Screens)
-  let isMobileLandscapeRotated = false;
-
   async function toggleVideoRotation() {
-    isMobileLandscapeRotated = !isMobileLandscapeRotated;
+    const nextState = !isMobileLandscapeRotated;
 
-    // 1. Try Screen Orientation API (Android Chrome, Edge)
     if (screen.orientation && screen.orientation.lock) {
       try {
-        if (isMobileLandscapeRotated) {
-          await screen.orientation.lock('landscape');
-          showToast('🔄 Rotated to Landscape');
-          return;
-        } else {
-          await screen.orientation.lock('portrait');
-          showToast('📱 Rotated to Portrait');
-          return;
-        }
+        await screen.orientation.lock(nextState ? 'landscape' : 'portrait');
+        isMobileLandscapeRotated = nextState;
+        showToast(nextState ? '🔄 Rotated to Landscape' : '📱 Rotated to Portrait');
+        return;
       } catch (err) {
-        // Fallback to in-player virtual rotation if lock is rejected or not supported
+        // Fallback to CSS virtual rotation
       }
     }
 
-    // 2. Hardware / CSS In-Player 90-Degree Virtual Rotation
-    // Works 100% on iOS Safari, Android WebViews, Telegram in-app browser, even with Phone Auto-Rotate Lock ON!
-    if (isMobileLandscapeRotated) {
-      playerContainer.classList.add('mobile-force-landscape');
-      document.body.classList.add('mobile-rotated-active');
-      showToast('🔄 Landscape Mode Activated');
-      showControls(3500);
-    } else {
-      playerContainer.classList.remove('mobile-force-landscape');
-      document.body.classList.remove('mobile-rotated-active');
-      showToast('📱 Portrait Mode Activated');
-      showControls(3500);
-    }
+    setCssRotation(nextState);
+    showToast(nextState ? '🔄 Landscape Mode Activated' : '📱 Portrait Mode Activated');
+    showControls(3500);
   }
 
   if (rotateBtn) rotateBtn.addEventListener('click', toggleVideoRotation);
@@ -855,10 +1065,18 @@ document.addEventListener('DOMContentLoaded', () => {
   let originalSpeed = 1.0;
 
   function startLongPress(e) {
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.scrubber-container') || e.target.closest('.settings-popover')) return;
+    if (
+      e.target.closest('button') ||
+      e.target.closest('input') ||
+      e.target.closest('a') ||
+      e.target.closest('.player-overlay-top') ||
+      e.target.closest('.player-overlay-bottom') ||
+      e.target.closest('.scrubber-container') ||
+      e.target.closest('.settings-popover')
+    ) return;
 
-    // Stage 1: Hold 350ms -> 2X Speed
     pressTimer2x = setTimeout(() => {
+      if (isSwiping) return;
       isFastForwarding = true;
       originalSpeed = videoElement.playbackRate || 1.0;
       videoElement.playbackRate = 2.0;
@@ -869,7 +1087,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }, 350);
 
-    // Stage 2: Ultra Hold past 1400ms -> 4X Ultra Turbo Speed
     pressTimer4x = setTimeout(() => {
       if (!isFastForwarding) return;
       videoElement.playbackRate = 4.0;
@@ -886,6 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(pressTimer4x);
     if (isFastForwarding) {
       isFastForwarding = false;
+      markSuppressClick();
       videoElement.playbackRate = originalSpeed || 1.0;
       if (speedOverlay) speedOverlay.style.display = 'none';
     }
@@ -895,10 +1113,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('mouseup', stopLongPress);
   playerContainer.addEventListener('touchstart', startLongPress, { passive: true });
   window.addEventListener('touchend', stopLongPress);
+  window.addEventListener('touchcancel', stopLongPress);
 
-  // 15. Double-Tap Seek handled in unified gesture listener (Section 4)
-
-  // 16. Swipe Gestures for Brightness & Volume
+  // 15. Swipe Gestures for Brightness & Volume (Rotation-aware & scroll-safe)
   let touchStartX = 0;
   let touchStartY = 0;
   let isSwiping = false;
@@ -907,6 +1124,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   playerContainer.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 1) return;
+    if (e.target.closest('.scrubber-container') || e.target.closest('.settings-popover')) return;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     isSwiping = false;
@@ -914,39 +1132,62 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: true });
 
   playerContainer.addEventListener('touchmove', (e) => {
-    if (e.touches.length !== 1) return;
-    const deltaX = e.touches[0].clientX - touchStartX;
-    const deltaY = touchStartY - e.touches[0].clientY;
+    if (e.touches.length !== 1 || isScrubbing) return;
+    if (e.target.closest('.scrubber-container') || e.target.closest('.settings-popover')) return;
 
-    if (!isSwiping && Math.abs(deltaY) > 15 && Math.abs(deltaY) > Math.abs(deltaX) * 1.5) {
+    const curX = e.touches[0].clientX;
+    const curY = e.touches[0].clientY;
+
+    let deltaForward;
+    let deltaUp;
+    if (isMobileLandscapeRotated) {
+      deltaForward = curY - touchStartY;
+      deltaUp = curX - touchStartX; // in 90deg CW rotation, dragging left/right along screen X changes height axis
+    } else {
+      deltaForward = curX - touchStartX;
+      deltaUp = touchStartY - curY;
+    }
+
+    if (!isSwiping && Math.abs(deltaUp) > 15 && Math.abs(deltaUp) > Math.abs(deltaForward) * 1.5) {
       isSwiping = true;
+      clearTimeout(pressTimer2x);
+      clearTimeout(pressTimer4x);
       const rect = playerContainer.getBoundingClientRect();
-      activeHud = (touchStartX - rect.left) < rect.width / 2 ? 'brightness' : 'volume';
+      const sidePct = isMobileLandscapeRotated
+        ? (touchStartY - rect.top) / (rect.height || 1)
+        : (touchStartX - rect.left) / (rect.width || 1);
+      activeHud = sidePct < 0.5 ? 'brightness' : 'volume';
     }
 
     if (isSwiping) {
-      const step = deltaY / 200;
-      touchStartY = e.touches[0].clientY;
+      e.preventDefault();
+      const step = deltaUp / 200;
+      touchStartX = curX;
+      touchStartY = curY;
 
       if (activeHud === 'brightness') {
         currentBrightness = Math.max(0.2, Math.min(1.5, currentBrightness + step));
         videoElement.style.filter = `brightness(${currentBrightness})`;
-        if (brightnessBar) brightnessBar.style.height = `${Math.round((currentBrightness / 1.5) * 100)}%`;
-        if (brightnessText) brightnessText.textContent = `${Math.round((currentBrightness / 1.5) * 100)}%`;
+        const pct = Math.round((currentBrightness / 1.5) * 100);
+        if (brightnessBar) brightnessBar.style.height = `${pct}%`;
+        if (brightnessText) brightnessText.textContent = `${pct}%`;
         if (brightnessHud) brightnessHud.style.display = 'flex';
       } else if (activeHud === 'volume') {
         const newVol = Math.max(0, Math.min(1, videoElement.volume + step));
         videoElement.volume = newVol;
-        if (volumeBar) volumeBar.style.height = `${Math.round(newVol * 100)}%`;
-        if (volumeText) volumeText.textContent = `${Math.round(newVol * 100)}%`;
+        videoElement.muted = false;
+        const pct = Math.round(newVol * 100);
+        if (volumeBar) volumeBar.style.height = `${pct}%`;
+        if (volumeText) volumeText.textContent = `${pct}%`;
         if (volumeHud) volumeHud.style.display = 'flex';
         updateVolumeIcon();
       }
     }
-  }, { passive: true });
+  }, { passive: false });
 
   window.addEventListener('touchend', () => {
     if (isSwiping) {
+      markSuppressClick();
       setTimeout(() => {
         if (brightnessHud) brightnessHud.style.display = 'none';
         if (volumeHud) volumeHud.style.display = 'none';
@@ -955,7 +1196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 17. Keyboard Shortcuts
+  // 16. Keyboard Shortcuts
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     switch (e.key) {
@@ -1004,30 +1245,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 18. Ambient Glow Canvas
+  // 17. Ambient Glow Canvas (CORS-safe, halts automatically if tainted)
   let ambientCtx = null;
   let ambientRaf = null;
+  let ambientBlocked = false;
 
   if (ambientCanvas) {
     try { ambientCtx = ambientCanvas.getContext('2d', { willReadFrequently: false }); } catch (e) {}
   }
 
   function drawAmbient() {
-    if (!videoElement.paused && !videoElement.ended && ambientCtx) {
-      try { ambientCtx.drawImage(videoElement, 0, 0, ambientCanvas.width, ambientCanvas.height); } catch (e) {}
+    if (ambientBlocked || !ambientCtx) {
+      ambientRaf = null;
+      return;
+    }
+    if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2) {
+      try {
+        ambientCtx.drawImage(videoElement, 0, 0, ambientCanvas.width, ambientCanvas.height);
+      } catch (e) {
+        ambientBlocked = true;
+        ambientRaf = null;
+        return;
+      }
     }
     ambientRaf = requestAnimationFrame(drawAmbient);
   }
 
   videoElement.addEventListener('play', () => {
-    if (!ambientRaf) ambientRaf = requestAnimationFrame(drawAmbient);
+    if (!ambientBlocked && !ambientRaf) ambientRaf = requestAnimationFrame(drawAmbient);
   });
   videoElement.addEventListener('pause', () => {
     if (ambientRaf) cancelAnimationFrame(ambientRaf);
     ambientRaf = null;
   });
 
-  // 19. Auto-Resume from Last Position
+  // 18. Auto-Resume from Last Position
   const storageKey = `teravids_pos_${vId || streamUrl.slice(-25) || 'default'}`;
 
   function checkResume() {
@@ -1041,39 +1293,92 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   videoElement.addEventListener('timeupdate', () => {
+    if (videoElement.currentTime > 0 && !hasRenderedVideoFrame) {
+      hideVideoPoster();
+    }
     if (Math.floor(videoElement.currentTime) % 3 === 0 && videoElement.currentTime > 5) {
       try { localStorage.setItem(storageKey, Math.floor(videoElement.currentTime)); } catch (e) {}
     }
   });
 
-  // 20. Multi-Tier Stream Loader (Direct -> No-CORS -> Edge Proxy -> HLS)
+  // 19. Resilient Multi-Candidate Stream Loader (Proxy-First for Blocked Hosts + Full Fallback Queue)
   let hlsInstance = null;
-  let retryCount = 0;
+  let playbackQueue = [];
+  let candidateIdx = -1;
+  let desiredResumeTime = 0;
+  let desiredAutoPlay = true;
 
-  function loadStream(url, poster = '') {
-    if (!url) {
+  function buildCandidatesForSingleUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return [];
+    const list = [];
+    const isHls = rawUrl.includes('.m3u8') || rawUrl.includes('/hls?');
+    const proxied = toProxyUrl(rawUrl);
+    if (shouldProxyUrl(rawUrl)) {
+      list.push({ url: proxied, isHls, isCors: true, raw: rawUrl });
+      list.push({ url: rawUrl, isHls, isCors: false, raw: rawUrl });
+    } else {
+      list.push({ url: rawUrl, isHls, isCors: false, raw: rawUrl });
+      if (rawUrl.startsWith('http') && !rawUrl.startsWith(WORKER_BASE)) {
+        list.push({ url: proxied, isHls, isCors: true, raw: rawUrl });
+      }
+    }
+    return list;
+  }
+
+  function dedupeCandidates(items) {
+    const seen = new Set();
+    return items.filter((item) => {
+      if (!item || !item.url || seen.has(item.url)) return false;
+      seen.add(item.url);
+      return true;
+    });
+  }
+
+  function advancePlaybackCandidate() {
+    candidateIdx++;
+    if (candidateIdx >= playbackQueue.length) {
+      showError('Playback Interrupted', 'Unable to decode video stream. The link may have expired or is blocked.');
+      return;
+    }
+    loadCandidate(playbackQueue[candidateIdx]);
+  }
+
+  function startCandidateQueue(candidates, resumeAt = 0, shouldPlay = isChannelUnlocked) {
+    playbackQueue = dedupeCandidates(candidates);
+    candidateIdx = -1;
+    desiredResumeTime = resumeAt;
+    desiredAutoPlay = shouldPlay;
+
+    if (playbackQueue.length === 0) {
       showError('Missing Stream URL', 'No valid stream URL was provided.');
       return;
     }
+    advancePlaybackCandidate();
+  }
 
-    if (poster) videoElement.poster = poster;
-
+  function loadCandidate(cand) {
+    const { url, isHls, isCors } = cand;
     loader.classList.remove('hidden');
-    loaderText.textContent = 'Connecting high-speed stream...';
+    loaderText.textContent = url.startsWith(WORKER_BASE)
+      ? 'Streaming via edge accelerator...'
+      : 'Connecting high-speed stream...';
     errorOverlay.style.display = 'none';
-
-    if (topDownloadBtn) topDownloadBtn.href = url;
-    if (btnDownloadExt) btnDownloadExt.href = url;
-    if (externalDownloadBtn) externalDownloadBtn.href = url;
-
-    const isM3U8 = url.includes('.m3u8');
 
     if (hlsInstance) {
       hlsInstance.destroy();
       hlsInstance = null;
     }
 
-    if (isM3U8 && Hls.isSupported()) {
+    if (isCors || url.startsWith(WORKER_BASE)) {
+      videoElement.crossOrigin = 'anonymous';
+    } else {
+      videoElement.removeAttribute('crossorigin');
+    }
+
+    if (isHls && typeof Hls !== 'undefined' && Hls.isSupported()) {
+      let netRetries = 0;
+      let mediaRetries = 0;
+
       hlsInstance = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
@@ -1087,7 +1392,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
         loader.classList.add('hidden');
-        if (isChannelUnlocked) {
+        if (desiredResumeTime > 1) {
+          videoElement.currentTime = desiredResumeTime;
+          desiredResumeTime = 0;
+        }
+        if (hlsInstance.levels && hlsInstance.levels.length > 1) {
+          const levelOpts = hlsInstance.levels.map((lvl, idx) => ({
+            id: `hls-${idx}`,
+            label: lvl.height ? `${lvl.height}p` : `Level ${idx + 1}`,
+            hlsLevel: idx,
+          }));
+          const nonHlsLevelOpts = availableQualities.filter((q) => q.url && q.hlsLevel === undefined);
+          availableQualities = [{ id: 'auto', label: 'Auto', hlsLevel: -1 }, ...levelOpts, ...nonHlsLevelOpts];
+          renderQualityOptions(availableQualities, activeQualityId);
+        }
+        if (desiredAutoPlay && isChannelUnlocked) {
           videoElement.play().catch(() => {
             updatePlayIcons();
           });
@@ -1095,31 +1414,50 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              hlsInstance.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hlsInstance.recoverMediaError();
-              break;
-            default:
-              hlsInstance.destroy();
-              showError('Stream Error', 'Failed to parse adaptive stream.');
-              break;
-          }
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries < 1 && !data.details?.includes('manifestLoad')) {
+          netRetries++;
+          hlsInstance.startLoad();
+          return;
         }
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 1) {
+          mediaRetries++;
+          hlsInstance.recoverMediaError();
+          return;
+        }
+        console.warn('[TeravidsPlay] HLS candidate failed, switching fallback...', data.details);
+        hlsInstance.destroy();
+        hlsInstance = null;
+        advancePlaybackCandidate();
       });
     } else {
-      // Direct MP4 playback
       videoElement.src = url;
       videoElement.load();
-      if (isChannelUnlocked) {
+      if (desiredResumeTime > 1) {
+        const resumeSnap = desiredResumeTime;
+        desiredResumeTime = 0;
+        videoElement.addEventListener('loadedmetadata', function onResumeMeta() {
+          videoElement.removeEventListener('loadedmetadata', onResumeMeta);
+          videoElement.currentTime = resumeSnap;
+        });
+      }
+      if (desiredAutoPlay && isChannelUnlocked) {
         videoElement.play().catch(() => {
           updatePlayIcons();
         });
       }
     }
+  }
+
+  function loadStream(url, poster = '') {
+    hasRenderedVideoFrame = false;
+    if (poster) setVideoPoster(poster);
+    if (!url) {
+      showError('Missing Stream URL', 'No valid stream URL was provided.');
+      return;
+    }
+    setDownloadTargets(url, topVideoTitle.textContent || 'TeravidsPlay_Video');
+    startCandidateQueue(buildCandidatesForSingleUrl(url));
   }
 
   videoElement.addEventListener('canplay', () => {
@@ -1128,6 +1466,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   videoElement.addEventListener('playing', () => {
     loader.classList.add('hidden');
+    hideVideoPoster();
   });
 
   videoElement.addEventListener('waiting', () => {
@@ -1136,28 +1475,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   videoElement.addEventListener('error', (e) => {
-    console.error('HTML5 video error:', e);
-    const currentSrc = videoElement.currentSrc || videoElement.src;
-
-    // Retry via Cloudflare Edge Streaming Proxy
-    if (currentSrc && !currentSrc.includes('workers.dev') && !currentSrc.startsWith('blob:') && !currentSrc.startsWith('data:') && retryCount === 0) {
-      retryCount++;
-      const proxiedUrl = `https://teravidsplay.proxyking.workers.dev/?url=${encodeURIComponent(currentSrc)}`;
-      console.info('[TeravidsPlay] Retrying via Cloudflare Edge Streaming Proxy...');
-      loaderText.textContent = 'Activating edge streaming proxy...';
-      loader.classList.remove('hidden');
-      videoElement.removeAttribute('crossorigin');
-      videoElement.src = proxiedUrl;
-      videoElement.load();
-      if (isChannelUnlocked) {
-        videoElement.play().catch(() => {
-          updatePlayIcons();
-        });
-      }
-      return;
-    }
-
-    showError('Playback Interrupted', 'Unable to decode video stream. The link may have expired or is blocked.');
+    console.warn('HTML5 video candidate error, trying next fallback...', e);
+    advancePlaybackCandidate();
   });
 
   function showError(heading, message) {
@@ -1167,53 +1486,57 @@ document.addEventListener('DOMContentLoaded', () => {
     errorOverlay.style.display = 'flex';
   }
 
-  // 21. Video Resolver for TeraBox Short IDs (?v=...)
-  async function resolveAndPlay(surl) {
-    loader.classList.remove('hidden');
-    loaderText.textContent = 'Resolving video details...';
-    try {
-      // 1. Try Cloudflare Edge Worker API
-      const workerEndpoint = `https://teravidsplay.proxyking.workers.dev/api/resolve?surl=${encodeURIComponent(surl)}`;
-      let res = await fetch(workerEndpoint).catch(() => null);
-      let data = null;
-      if (res && res.ok) {
-        data = await res.json();
-      }
+  function setDownloadTargets(rawMediaUrl, title) {
+    const cleanName = title && title !== 'TeraBox Video' ? title : 'TeravidsPlay_Video.mp4';
+    const dlHref = vId
+      ? `${WORKER_BASE}/dl/${encodeURIComponent(vId)}?fn=${encodeURIComponent(cleanName)}`
+      : (rawMediaUrl ? toProxyUrl(rawMediaUrl, { dl: true, filename: cleanName }) : '#');
 
-      // 2. Direct edge resolver fallback with domain cycling
-      if (!data || !data.success) {
-        const cleanSurl = surl.startsWith('1') ? surl : '1' + surl;
-        const candidates = [
-          `https://terabox.com/s/${cleanSurl}`,
-          `https://1024terabox.com/s/${cleanSurl}`,
-          `https://teraboxapp.com/s/${cleanSurl}`
-        ];
-        for (const cand of candidates) {
-          try {
-            const directResp = await fetch('https://iteraplay.in/api/videos/import', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Referer': 'https://iteraplay.in/',
-                'Origin': 'https://iteraplay.in',
-              },
-              body: JSON.stringify({ url: cand }),
-            });
-            if (directResp.ok) {
-              const candData = await directResp.json();
-              if (candData && candData.success && candData.videos && candData.videos.length > 0) {
-                data = candData;
-                break;
-              }
-            }
-          } catch (e) {}
+    if (topDownloadBtn) topDownloadBtn.href = dlHref;
+    if (btnDownloadExt) btnDownloadExt.href = dlHref;
+    if (externalDownloadBtn) {
+      externalDownloadBtn.href = vId
+        ? `https://terabox.com/s/${encodeURIComponent(vId.startsWith('1') ? vId : '1' + vId)}`
+        : dlHref;
+    }
+  }
+
+  // 20. Extract String URL from Stream Field (dict or string)
+  function extractStreamMapEntries(val) {
+    const entries = [];
+    if (typeof val === 'string' && val.startsWith('http')) {
+      entries.push({ label: 'HD Stream', url: val });
+    } else if (val && typeof val === 'object') {
+      for (const [k, v] of Object.entries(val)) {
+        if (typeof v === 'string' && v.startsWith('http')) {
+          entries.push({ label: k.toUpperCase() === 'AUTO' ? 'Auto' : k, url: v });
         }
       }
+    }
+    return entries;
+  }
 
-      if (data && data.success && data.videos && data.videos.length > 0) {
+  // 21. Video Resolver for TeraBox Short IDs (?v=... or ?url=...)
+  async function resolveAndPlay(targetIdOrUrl) {
+    hasRenderedVideoFrame = false;
+    loader.classList.remove('hidden');
+    loaderText.textContent = 'Resolving video details...';
+    errorOverlay.style.display = 'none';
+
+    try {
+      const workerEndpoint = `${WORKER_BASE}/api/resolve?surl=${encodeURIComponent(targetIdOrUrl)}`;
+      const res = await fetch(workerEndpoint).catch(() => null);
+      let data = null;
+      if (res) {
+        try {
+          data = await res.json();
+        } catch (e) {}
+      }
+
+      if (data && data.success && Array.isArray(data.videos) && data.videos.length > 0) {
         const vid = data.videos[0];
         const title = vid.title || cleanTitle || 'TeraBox Video';
-        const sizeFormatted = vid.size ? `${(vid.size / (1024 * 1024)).toFixed(1)} MB` : cleanSize;
+        const sizeFormatted = vid.size ? formatBytes(vid.size) : cleanSize;
 
         topVideoTitle.textContent = title;
         videoTitleElem.textContent = title;
@@ -1225,49 +1548,131 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const thumb = vid.thumbnailUrl || cleanThumb;
-        if (thumb) videoElement.poster = thumb;
+        if (thumb) setVideoPoster(thumb);
 
-        const fastMap = vid.fast_stream_url || {};
-        const hlsCandidate = fastMap['1080p'] || fastMap['720p'] || fastMap['480p'] || fastMap['360p'] || vid.hls_url;
-        const playSource = (Hls.isSupported() && hlsCandidate) ? hlsCandidate : (vid.stream_url || hlsCandidate);
+        const hlsEntries = [
+          ...extractStreamMapEntries(vid.fast_stream_url),
+          ...extractStreamMapEntries(vid.hls_url),
+        ];
+        const priorityOrder = ['1080p', '720p', '480p', '360p', 'Auto'];
+        hlsEntries.sort((a, b) => {
+          const ia = priorityOrder.indexOf(a.label);
+          const ib = priorityOrder.indexOf(b.label);
+          return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+        });
 
-        const dlUrl = vid.stream_url || playSource;
-        if (topDownloadBtn) topDownloadBtn.href = dlUrl;
-        if (btnDownloadExt) btnDownloadExt.href = dlUrl;
+        const mp4Url = vid.original_quality_url || vid.stream_url || '';
+        const qualityList = [];
+        const seenQ = new Set();
+        for (const e of hlsEntries) {
+          if (!seenQ.has(e.label)) {
+            seenQ.add(e.label);
+            qualityList.push({ id: `q-${e.label}`, label: e.label, url: e.url });
+          }
+        }
+        if (mp4Url) {
+          qualityList.push({ id: 'q-mp4', label: 'Original MP4', url: mp4Url });
+        }
 
-        // Auto trigger download if ?dl=1 requested
-        if (urlParams.get('dl') === '1' && dlUrl) {
+        availableQualities = qualityList;
+        const primaryOpt = qualityList[0];
+        activeQualityId = primaryOpt ? primaryOpt.id : 'auto';
+        renderQualityOptions(availableQualities, activeQualityId);
+
+        setDownloadTargets(mp4Url || (hlsEntries[0]?.url || ''), title);
+
+        if (urlParams.get('dl') === '1' && (mp4Url || vId)) {
+          const dlTarget = vId
+            ? `${WORKER_BASE}/dl/${encodeURIComponent(vId)}?fn=${encodeURIComponent(title)}`
+            : toProxyUrl(mp4Url, { dl: true, filename: title });
           const a = document.createElement('a');
-          a.href = dlUrl;
-          a.download = title || 'video.mp4';
-          a.target = '_blank';
+          a.href = dlTarget;
+          a.rel = 'noopener noreferrer';
           document.body.appendChild(a);
           a.click();
           a.remove();
           showToast('🚀 Fast Download Started!');
         }
 
-        loadStream(playSource, thumb);
+        // Build ordered multi-tier playback queue: HLS (proxied if blocked) -> MP4 (proxied + direct)
+        const allCandidates = [];
+        for (const e of hlsEntries.slice(0, 2)) {
+          if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+            allCandidates.push(...buildCandidatesForSingleUrl(e.url));
+          }
+        }
+        if (mp4Url) {
+          allCandidates.push(...buildCandidatesForSingleUrl(mp4Url));
+        }
+        // Native HLS Safari fallback if Hls.js isn't supported
+        if (allCandidates.length === 0 && hlsEntries[0]?.url) {
+          allCandidates.push(...buildCandidatesForSingleUrl(hlsEntries[0].url));
+        }
+
+        startCandidateQueue(allCandidates);
         return;
       }
-      showError('Video Unavailable', 'Could not resolve stream for this link. It may have expired or is private.');
+
+      // Even if stream extraction failed, display any partial metadata & preview thumbnail
+      const partial = data?.partial_metadata;
+      if (partial) {
+        if (partial.title) {
+          topVideoTitle.textContent = partial.title;
+          videoTitleElem.textContent = partial.title;
+          document.title = `${partial.title} — TeravidsPlay`;
+        }
+        if (partial.size) {
+          fileSizeElem.textContent = `📦 ${formatBytes(partial.size)}`;
+          fileSizeElem.style.display = 'inline';
+        }
+        if (partial.thumbnailUrl) {
+          setVideoPoster(partial.thumbnailUrl);
+        }
+      }
+      setDownloadTargets('', partial?.title || cleanTitle || 'TeravidsPlay_Video');
+      showError('Video Unavailable', 'Could not resolve stream for this link. It may have expired, require login, or be blocked.');
     } catch (err) {
       showError('Connection Error', 'Failed to connect to streaming engine. Please try again.');
     }
   }
 
-  // 22. Share Listeners
+  // 22. Share Listeners with Clipboard + ExecCommand Fallback
+  function legacyCopy(text) {
+    const previousFocus = document.activeElement;
+    const field = Object.assign(document.createElement('textarea'), { value: text });
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position:fixed;inset-block-start:0;opacity:0';
+    document.body.append(field);
+    field.select();
+    try {
+      return document.execCommand('copy');
+    } catch (e) {
+      return false;
+    } finally {
+      field.remove();
+      previousFocus?.focus({ preventScroll: true });
+    }
+  }
+
   async function triggerShare() {
-    const shareUrl = vId ? `${window.location.origin}/v/${vId}` : window.location.href;
+    const shareUrl = vId ? `${window.location.origin}/v/${encodeURIComponent(vId)}` : window.location.href;
     if (navigator.share) {
       try {
         await navigator.share({ title: topVideoTitle.textContent || cleanTitle, url: shareUrl });
         return;
       } catch (err) {}
     }
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(shareUrl);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast('🔗 Video link copied!');
+        return;
+      }
+    } catch (e) {}
+    if (legacyCopy(shareUrl)) {
       showToast('🔗 Video link copied!');
+    } else {
+      showToast('Unable to copy link');
     }
   }
 
@@ -1276,21 +1681,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
-      retryCount = 0;
-      if (vId) resolveAndPlay(vId);
-      else if (streamUrl) loadStream(streamUrl);
+      if (resolveInput) resolveAndPlay(resolveInput);
+      else if (streamUrl) loadStream(streamUrl, cleanThumb);
     });
   }
 
   // 23. Initiate Playback
-  if (vId) {
-    resolveAndPlay(vId);
+  if (resolveInput) {
+    resolveAndPlay(resolveInput);
   } else if (streamUrl) {
+    setDownloadTargets(streamUrl, cleanTitle || 'TeravidsPlay_Video');
     if (urlParams.get('dl') === '1') {
       const a = document.createElement('a');
-      a.href = streamUrl;
-      a.download = cleanTitle || 'video.mp4';
-      a.target = '_blank';
+      a.href = shouldProxyUrl(streamUrl) ? toProxyUrl(streamUrl, { dl: true, filename: cleanTitle }) : streamUrl;
+      a.rel = 'noopener noreferrer';
       document.body.appendChild(a);
       a.click();
       a.remove();

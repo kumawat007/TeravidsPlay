@@ -30,7 +30,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   min-height: 100%;
   background-color: var(--cinema-bg);
@@ -151,8 +152,15 @@ html, body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .home-badge-icon {
@@ -166,8 +174,15 @@ html, body {
 }
 
 @keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
 }
 
 .home-title {
@@ -277,10 +292,12 @@ html, body {
   position: relative;
   width: 100%;
   height: min(84vh, calc(100vw * 9 / 16));
+  height: min(84dvh, calc(100vw * 9 / 16));
   background: #000000;
   overflow: hidden;
   outline: none;
   user-select: none;
+  touch-action: pan-y;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9);
 }
 
@@ -291,11 +308,30 @@ html, body {
 }
 
 .cinema-player-viewport video {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: #000000;
   display: block;
+}
+
+.video-poster-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000000;
+  z-index: 2;
+  pointer-events: none;
+  display: block;
+}
+
+:where(a:any-link, button, input):focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
 }
 
 /* Dynamic Ambient Glow Behind Player */
@@ -495,7 +531,9 @@ html, body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 #loaderText {
@@ -615,7 +653,8 @@ html, body {
   gap: 10px;
 }
 
-.controls-left, .controls-right {
+.controls-left,
+.controls-right {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -748,8 +787,15 @@ html, body {
 }
 
 @keyframes popIn {
-  from { opacity: 0; transform: translateY(10px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .settings-header {
@@ -781,7 +827,8 @@ html, body {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.settings-view, .settings-subview {
+.settings-view,
+.settings-subview {
   padding: 6px 0;
 }
 
@@ -805,7 +852,8 @@ html, body {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.row-left, .row-right {
+.row-left,
+.row-right {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -908,8 +956,13 @@ html, body {
   gap: 6px;
 }
 
-.brightness-hud { left: 16px; }
-.volume-hud { right: 16px; }
+.brightness-hud {
+  left: 16px;
+}
+
+.volume-hud {
+  right: 16px;
+}
 
 .hud-bar-track {
   flex: 1;
@@ -946,8 +999,16 @@ html, body {
   font-size: 18px;
   font-weight: 800;
 }
-.seek-ripple-left { left: 0; border-radius: 0 50% 50% 0; }
-.seek-ripple-right { right: 0; border-radius: 50% 0 0 50%; }
+
+.seek-ripple-left {
+  left: 0;
+  border-radius: 0 50% 50% 0;
+}
+
+.seek-ripple-right {
+  right: 0;
+  border-radius: 50% 0 0 50%;
+}
 
 .resume-toast {
   position: absolute;
@@ -1072,10 +1133,28 @@ html, body {
   max-width: 360px;
 }
 
-.error-icon { font-size: 36px; margin-bottom: 8px; }
-.error-card h3 { font-size: 16px; color: #ff4d4d; margin-bottom: 6px; }
-.error-card p { font-size: 12.5px; color: var(--cinema-text-muted); margin-bottom: 16px; }
-.error-actions { display: flex; gap: 8px; justify-content: center; }
+.error-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+.error-card h3 {
+  font-size: 16px;
+  color: #ff4d4d;
+  margin-bottom: 6px;
+}
+
+.error-card p {
+  font-size: 12.5px;
+  color: var(--cinema-text-muted);
+  margin-bottom: 16px;
+}
+
+.error-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
 
 .btn {
   padding: 8px 16px;
@@ -1090,8 +1169,16 @@ html, body {
   align-items: center;
   justify-content: center;
 }
-.btn-primary { background: var(--yt-red); color: #fff; }
-.btn-secondary { background: #333; color: #fff; }
+
+.btn-primary {
+  background: var(--yt-red);
+  color: #fff;
+}
+
+.btn-secondary {
+  background: #333;
+  color: #fff;
+}
 
 /* ==========================================================================
    10. VIDEO METADATA & FOOTER (Below Theater Player)
@@ -1257,6 +1344,7 @@ html, body {
    11. MOBILE & RESPONSIVE PERFECTION
    ========================================================================== */
 @media (max-width: 768px) {
+
   /* Hide Top Bar Buttons on Mobile (Moved to Bottom Actions!) */
   .app-navbar .nav-right {
     display: none !important;
@@ -1274,7 +1362,7 @@ html, body {
   .cinema-player-viewport {
     height: auto;
     aspect-ratio: 16 / 9;
-    touch-action: manipulation;
+    touch-action: pan-y;
   }
 
   /* Show Mobile Only Controls inside player */
@@ -1426,19 +1514,24 @@ html, body {
     min-width: 34px;
     min-height: 34px;
   }
+
   .ctrl-pill-btn {
     padding: 3px 6px;
     font-size: 10.5px;
   }
+
   .controls-left {
     gap: 4px;
   }
+
   .controls-right {
     gap: 4px;
   }
+
   .time-display {
     font-size: 10px;
   }
+
   .settings-popover {
     width: 230px;
     right: 8px;
@@ -1454,12 +1547,12 @@ html, body {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
-    width: 100dvh !important;
     width: 100vh !important;
-    height: 100dvw !important;
+    width: 100dvh !important;
     height: 100vw !important;
-    max-height: 100vw !important;
-    transform: rotate(90deg) translateY(-100vw) !important;
+    height: 100dvw !important;
+    max-height: 100dvw !important;
+    transform: rotate(90deg) translateY(-100%) !important;
     transform-origin: top left !important;
     z-index: 9999999 !important;
     border-radius: 0 !important;
@@ -1492,12 +1585,14 @@ html, body {
   .app-navbar {
     display: none !important;
   }
+
   .cinema-player-viewport {
     height: 100vh !important;
     width: 100vw !important;
     border-radius: 0 !important;
     max-height: 100vh !important;
   }
+
   .video-info-section {
     display: none !important;
   }
