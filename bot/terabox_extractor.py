@@ -14,6 +14,7 @@ import time
 import logging
 import urllib.parse
 import ipaddress
+import concurrent.futures
 from typing import Dict, Any, Optional, Tuple
 import requests
 
@@ -200,7 +201,13 @@ def _parse_edge_video_payload(video: Dict[str, Any], source_name: str) -> Option
     """Normalizes the JSON schema returned by Worker/iTeraPlay engines into TeravidsPlay format."""
     title = video.get("title", "TeraBox Video")
     size = int(video.get("size") or 0)
-    stream_url = video.get("original_quality_url") or video.get("stream_url") or ""
+    stream_url = (
+        video.get("original_quality_url")
+        or video.get("stream_url")
+        or video.get("mp4_url_fast")
+        or video.get("mp4_url_slow")
+        or ""
+    )
 
     hls_url = _pick_first_hls_url(video.get("fast_stream_url")) or _pick_first_hls_url(video.get("hls_url"))
     thumb = video.get("thumbnailUrl") or video.get("thumbnail") or video.get("thumb")
@@ -306,75 +313,92 @@ class TeraBoxExtractor:
     def parse_surl_pair(self, share_url: str) -> Tuple[Optional[str], str, str]:
         """
         Returns (raw_token, share_token_with_1, short_token_for_surl_param) without stripping
-        legitimate leading '1' characters from 22-char shorturl IDs.
+        legitimate leading '1' characters from hyphenated or query-based shorturl IDs.
         """
         raw = self.parse_surl(share_url)
         if not raw:
             return None, "", ""
 
-        # Only strip '1' if token is purely alphanumeric (without '-' or '_') and 23+ chars long (legacy TeraBox style)
+        from_query = bool(re.search(r"[?&](?:surl|v|s)=", share_url)) and not re.search(r"/(?:s|v)/", share_url)
         is_legacy = bool(re.match(r"^1[a-zA-Z0-9]{22,}$", raw) and "-" not in raw and "_" not in raw)
         share_tok = raw if raw.startswith("1") else "1" + raw
-        short_tok = raw[1:] if is_legacy else raw
+        short_tok = raw if from_query else (raw[1:] if is_legacy else raw)
         return raw, share_tok, short_tok
 
     def resolve_via_worker_engine(self, surl_or_url: str) -> Optional[Dict[str, Any]]:
         """
         Primary Engine for Cloud & Datacenter Deployments (Render / Koyeb / VPS):
-        Queries the Cloudflare Edge Worker API with reliable timeout to fetch full metadata.
-        Includes automatic fallback targets and retry delay for cold async edge imports.
+        Queries the Cloudflare Edge Worker API with a generous timeout for cold imports.
         """
         if not self.worker_url:
             self.last_diagnostics.append("Worker Engine skipped: worker_url is empty")
             return None
 
-        # Query canonical URL first with tight 6s timeout so secondary engine can kick in instantly
-        raw_token, share_token, short_token = self.parse_surl_pair(surl_or_url)
-        target = f"https://terabox.com/s/{share_token}" if share_token else surl_or_url
+        raw_token, share_token, _ = self.parse_surl_pair(surl_or_url)
+        # Prioritize 1024terabox mirror first so even un-updated workers resolve fast, with original URL fallback
+        targets = []
+        if share_token:
+            targets.append(f"https://1024terabox.com/s/{share_token}")
+        if surl_or_url.startswith("http") and surl_or_url not in targets:
+            targets.append(surl_or_url)
+        elif not targets:
+            targets.append(surl_or_url)
 
-        try:
-            endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(target, safe='')}"
-            logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker: {endpoint}")
-            resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=6)
-            self.last_diagnostics.append(f"Worker status: {resp.status_code}")
-            logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code}")
+        for idx, target in enumerate(targets):
+            t0 = time.time()
+            try:
+                endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(target, safe='')}"
+                logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker (attempt {idx+1}): {endpoint}")
+                resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=16)
+                elapsed = time.time() - t0
+                self.last_diagnostics.append(f"Worker attempt {idx+1} -> status {resp.status_code} ({elapsed:.1f}s)")
+                logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code} ({elapsed:.2f}s)")
 
-            data = {}
-            if resp.text:
-                try:
-                    data = resp.json()
-                except Exception:
-                    data = {}
+                data = {}
+                if resp.text:
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        data = {}
 
-            if resp.status_code == 200 and data.get("success") and data.get("videos"):
-                parsed = _parse_edge_video_payload(data["videos"][0], "Cloudflare Edge Engine")
-                if parsed:
-                    logger.info(f"[TeraBoxExtractor] Resolved via Worker: '{parsed['title']}' ({parsed['size_formatted']})")
-                    return parsed
+                if resp.status_code == 200 and data.get("success") and data.get("videos"):
+                    parsed = _parse_edge_video_payload(data["videos"][0], "Cloudflare Edge Engine")
+                    if parsed:
+                        logger.info(f"[TeraBoxExtractor] Resolved via Worker: '{parsed['title']}' ({parsed['size_formatted']})")
+                        return parsed
 
-            partial = data.get("partial_metadata")
-            if partial and (partial.get("title") or partial.get("thumbnailUrl")):
-                title = partial.get("title", "TeraBox Video")
-                size = int(partial.get("size") or 0)
-                thumb = partial.get("thumbnailUrl")
-                logger.info(f"[TeraBoxExtractor] Resolved partial metadata via Worker: '{title}'")
-                return {
-                    "success": True,
-                    "title": title,
-                    "size_bytes": size,
-                    "size_formatted": format_bytes(size) if size > 0 else "1080p HD",
-                    "thumbnail": thumb,
-                    "stream_url": "",
-                    "hls_url": None,
-                    "download_url": "",
-                    "quality": "HD 1080p",
-                    "source": "Cloudflare Edge Engine (Metadata)",
-                }
+                partial = data.get("partial_metadata")
+                if partial and (partial.get("title") or partial.get("thumbnailUrl")):
+                    title = partial.get("title", "TeraBox Video")
+                    size = int(partial.get("size") or 0)
+                    thumb = partial.get("thumbnailUrl")
+                    logger.info(f"[TeraBoxExtractor] Resolved partial metadata via Worker: '{title}'")
+                    return {
+                        "success": True,
+                        "title": title,
+                        "size_bytes": size,
+                        "size_formatted": format_bytes(size) if size > 0 else "1080p HD",
+                        "thumbnail": thumb,
+                        "stream_url": "",
+                        "hls_url": None,
+                        "download_url": "",
+                        "quality": "HD 1080p",
+                        "source": "Cloudflare Edge Engine (Metadata)",
+                    }
 
-        except Exception as e:
-            err_msg = f"Worker notice: {type(e).__name__}: {e}"
-            self.last_diagnostics.append(err_msg)
-            logger.info(f"[TeraBoxExtractor] {err_msg} -> Falling back to HighSpeed Engine")
+                debug_summary = data.get("debug") or data.get("message") or resp.text[:180]
+                if debug_summary:
+                    logger.info(f"[TeraBoxExtractor] Worker non-200 detail (attempt {idx+1}): {str(debug_summary)[:240]}")
+
+                # Only retry a second Worker target if the first failed fast (<6s)
+                if elapsed >= 6.0:
+                    break
+
+            except Exception as e:
+                err_msg = f"Worker notice (attempt {idx+1}): {type(e).__name__}: {e}"
+                self.last_diagnostics.append(err_msg)
+                logger.info(f"[TeraBoxExtractor] {err_msg} -> Falling back to HighSpeed Engine")
+                break
 
         return None
 
@@ -397,7 +421,8 @@ class TeraBoxExtractor:
                 timeout=12,
             )
             if resp.status_code in (403, 429):
-                self.last_diagnostics.append(f"iTeraPlay HTTP {resp.status_code}")
+                self.last_diagnostics.append(f"iTeraPlay HTTP {resp.status_code} ({share_url})")
+                logger.info(f"[TeraBoxExtractor] HighSpeed Engine HTTP {resp.status_code} for {share_url}")
                 return None, True
             if resp.status_code == 200:
                 data = resp.json()
@@ -408,8 +433,13 @@ class TeraBoxExtractor:
                 status = data.get("status", "")
                 if status in ("captcha_required", "rate_limited"):
                     self.last_diagnostics.append(f"iTeraPlay status: {status}")
+                    logger.info(f"[TeraBoxExtractor] HighSpeed Engine status: {status}")
                     return None, True
+            else:
+                self.last_diagnostics.append(f"iTeraPlay HTTP {resp.status_code} ({share_url})")
+                logger.info(f"[TeraBoxExtractor] HighSpeed Engine HTTP {resp.status_code} for {share_url}: {resp.text[:120]}")
         except Exception as e:
+            self.last_diagnostics.append(f"iTeraPlay err ({share_url}): {type(e).__name__}")
             logger.warning(f"[TeraBoxExtractor] HighSpeed Engine notice: {e}")
         return None, False
 
@@ -422,8 +452,10 @@ class TeraBoxExtractor:
             return None
         try:
             page_url = f"https://www.terabox.app/sharing/link?surl={urllib.parse.quote(short_token, safe='')}"
-            resp = self.session.get(page_url, timeout=10)
+            resp = self.session.get(page_url, timeout=6)
             if resp.status_code != 200:
+                self.last_diagnostics.append(f"Direct scraper HTTP {resp.status_code}")
+                logger.info(f"[TeraBoxExtractor] Direct scraper HTTP {resp.status_code} on sharing/link")
                 return None
             html_body = resp.text
 
@@ -473,6 +505,9 @@ class TeraBoxExtractor:
 
             data = fetch_list()
             if not data or not data.get("list"):
+                errno = (data or {}).get("errno")
+                self.last_diagnostics.append(f"Direct scraper share/list empty (errno={errno})")
+                logger.info(f"[TeraBoxExtractor] Direct scraper share/list empty (errno={errno})")
                 return None
 
             item = _pick_best_list_item(data["list"])
@@ -533,9 +568,10 @@ class TeraBoxExtractor:
         surl_masked = f"{raw_token[:3]}***{raw_token[-3:]}" if raw_token and len(raw_token) > 6 else "***"
         logger.info(f"[TeraBoxExtractor] Processing safe surl token: {surl_masked}")
 
-        # Build deduplicated candidate list prioritizing canonical TeraBox URL
+        # Build deduplicated candidate list prioritizing fastest working mirrors + canonical URL
         candidates = []
         if share_token:
+            candidates.append(f"https://1024terabox.com/s/{share_token}")
             candidates.append(f"https://terabox.com/s/{share_token}")
         if is_terabox_url(clean_url) and clean_url not in candidates and not _host_matches(
             (urllib.parse.urlparse(clean_url).hostname or "").lower(), ALLOWED_SHORTENERS
@@ -544,9 +580,8 @@ class TeraBoxExtractor:
 
         if share_token:
             for c in (
-                f"https://teraboxapp.com/s/{share_token}",
                 f"https://www.terabox.app/sharing/link?surl={short_token}",
-                f"https://1024terabox.com/s/{share_token}",
+                f"https://teraboxapp.com/s/{share_token}",
             ):
                 if c not in candidates:
                     candidates.append(c)
@@ -555,31 +590,45 @@ class TeraBoxExtractor:
 
         partial_meta = None
 
+        def _finalize_result(res_dict: Dict[str, Any]) -> Dict[str, Any]:
+            res_dict["surl"] = share_token or raw_token
+            if not res_dict.get("thumbnail") and short_token:
+                direct_meta = self.resolve_via_direct_scraper(short_token)
+                if direct_meta and direct_meta.get("thumbnail"):
+                    res_dict["thumbnail"] = direct_meta["thumbnail"]
+            return res_dict
+
         # Step 2: Primary Cloudflare Edge Worker Engine
         if share_token or clean_url:
             worker_res = self.resolve_via_worker_engine(clean_url if clean_url.startswith("http") else share_token)
             if worker_res and worker_res.get("success"):
-                worker_res["surl"] = share_token or raw_token
-                if not worker_res.get("thumbnail") and short_token:
-                    direct_meta = self.resolve_via_direct_scraper(short_token)
-                    if direct_meta and direct_meta.get("thumbnail"):
-                        worker_res["thumbnail"] = direct_meta["thumbnail"]
-                return worker_res
+                return _finalize_result(worker_res)
             if worker_res and worker_res.get("partial_metadata"):
                 partial_meta = worker_res["partial_metadata"]
 
-        # Step 3: Direct High-Speed Engine across candidates (with short-circuit on rate-limit/captcha)
-        for cand in candidates:
-            res, stop_loop = self.resolve_via_highspeed_engine(cand)
-            if res and res.get("success"):
-                res["surl"] = share_token or raw_token
-                if not res.get("thumbnail") and short_token:
-                    direct_meta = self.resolve_via_direct_scraper(short_token)
-                    if direct_meta and direct_meta.get("thumbnail"):
-                        res["thumbnail"] = direct_meta["thumbnail"]
-                return res
-            if stop_loop:
-                break
+        # Step 3: Direct High-Speed Engine (parallel race on top 3 mirrors without waiting for losers)
+        primary_batch = candidates[:3]
+        short_circuit = False
+        if primary_batch:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(primary_batch))
+            try:
+                future_map = {executor.submit(self.resolve_via_highspeed_engine, cand): cand for cand in primary_batch}
+                for fut in concurrent.futures.as_completed(future_map):
+                    res, stop_loop = fut.result()
+                    if res and res.get("success"):
+                        return _finalize_result(res)
+                    if stop_loop:
+                        short_circuit = True
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
+
+        if not short_circuit:
+            for cand in candidates[3:]:
+                res, stop_loop = self.resolve_via_highspeed_engine(cand)
+                if res and res.get("success"):
+                    return _finalize_result(res)
+                if stop_loop:
+                    break
 
         # Step 4: Direct terabox.app Metadata/dlink Scraper
         if short_token:
@@ -590,7 +639,10 @@ class TeraBoxExtractor:
 
         # Step 5: Web Player Client Fallback (uses any partial metadata harvested from worker)
         if share_token or raw_token:
-            logger.info(f"[TeraBoxExtractor] Instant resolution via Web Player Client Engine for surl: {surl_masked}")
+            logger.warning(
+                f"[TeraBoxExtractor] Instant resolution via Web Player Client Engine for surl: {surl_masked}. "
+                f"Diagnostics: {self.last_diagnostics}"
+            )
             title = (partial_meta or {}).get("title") or "TeraBox Video Stream"
             size_bytes = int((partial_meta or {}).get("size") or 0)
             thumb = (partial_meta or {}).get("thumbnailUrl")

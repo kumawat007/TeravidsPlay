@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
     'teraboxcdn.com',
     'iteraplay.in',
     'iteraplay.com',
+    'qzz.io',
+    'cdniteraplay.qzz.io',
+    'cloudflarestorage.com',
   ];
 
   // 1. Telegram WebApp Integration & Auto-Unlock
@@ -1497,19 +1500,18 @@ document.addEventListener('DOMContentLoaded', () => {
     errorOverlay.style.display = 'flex';
   }
 
-  function setDownloadTargets(rawMediaUrl, title) {
+  function setDownloadTargets(rawMediaUrl, title, allowWorkerDl = true) {
     const cleanName = title && title !== 'TeraBox Video' ? title : 'TeravidsPlay_Video.mp4';
-    const dlHref = vId
-      ? `${WORKER_BASE}/dl/${encodeURIComponent(vId)}?fn=${encodeURIComponent(cleanName)}`
-      : (rawMediaUrl ? toProxyUrl(rawMediaUrl, { dl: true, filename: cleanName }) : '#');
+    const teraboxPage = vId
+      ? `https://terabox.com/s/${encodeURIComponent(vId.startsWith('1') ? vId : '1' + vId)}`
+      : '#';
+    const dlHref = rawMediaUrl
+      ? (vId && allowWorkerDl ? `${WORKER_BASE}/dl/${encodeURIComponent(vId)}?fn=${encodeURIComponent(cleanName)}` : toProxyUrl(rawMediaUrl, { dl: true, filename: cleanName }))
+      : teraboxPage;
 
     if (topDownloadBtn) topDownloadBtn.href = dlHref;
     if (btnDownloadExt) btnDownloadExt.href = dlHref;
-    if (externalDownloadBtn) {
-      externalDownloadBtn.href = vId
-        ? `https://terabox.com/s/${encodeURIComponent(vId.startsWith('1') ? vId : '1' + vId)}`
-        : dlHref;
-    }
+    if (externalDownloadBtn) externalDownloadBtn.href = teraboxPage;
   }
 
   // 20. Extract String URL from Stream Field (dict or string)
@@ -1572,7 +1574,7 @@ document.addEventListener('DOMContentLoaded', () => {
           return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
         });
 
-        const mp4Url = vid.original_quality_url || vid.stream_url || '';
+        const mp4Url = vid.original_quality_url || vid.stream_url || vid.mp4_url_fast || vid.mp4_url_slow || '';
         const qualityList = [];
         const seenQ = new Set();
         for (const e of hlsEntries) {
@@ -1590,12 +1592,12 @@ document.addEventListener('DOMContentLoaded', () => {
         activeQualityId = primaryOpt ? primaryOpt.id : 'auto';
         renderQualityOptions(availableQualities, activeQualityId);
 
-        setDownloadTargets(mp4Url || (hlsEntries[0]?.url || ''), title);
+        setDownloadTargets(mp4Url, title, Boolean(mp4Url));
 
-        if (urlParams.get('dl') === '1' && (mp4Url || vId)) {
-          const dlTarget = vId
-            ? `${WORKER_BASE}/dl/${encodeURIComponent(vId)}?fn=${encodeURIComponent(title)}`
-            : toProxyUrl(mp4Url, { dl: true, filename: title });
+        if (urlParams.get('nodl') === '1' && !mp4Url) {
+          showToast('Direct MP4 unavailable — streaming in HD!');
+        } else if (urlParams.get('dl') === '1' && mp4Url) {
+          const dlTarget = toProxyUrl(mp4Url, { dl: true, filename: title });
           const a = document.createElement('a');
           a.href = dlTarget;
           a.rel = 'noopener noreferrer';

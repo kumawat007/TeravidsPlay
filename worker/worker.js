@@ -228,11 +228,11 @@ function parseSurlTokens(input) {
 
   if (!rawToken) return null;
 
-  // Only strip '1' if token is purely alphanumeric (without '-' or '_') and 23+ chars long (legacy TeraBox style)
+  // Only strip leading '1' if parsed from a /s/ path or bare token AND purely alphanumeric 23+ chars
   const isLegacyAlphaNum = /^1[a-zA-Z0-9]{22,}$/.test(rawToken) && !rawToken.includes("-") && !rawToken.includes("_");
 
   const shareToken = rawToken.startsWith("1") ? rawToken : "1" + rawToken;
-  const shortToken = isLegacyAlphaNum ? rawToken.slice(1) : rawToken;
+  const shortToken = cameFromQuery ? rawToken : (isLegacyAlphaNum ? rawToken.slice(1) : rawToken);
 
   return { rawToken, shareToken, shortToken };
 }
@@ -296,30 +296,64 @@ function pickBestMediaItem(list) {
 
 function pickFirstPlayableVideo(videos) {
   if (!Array.isArray(videos) || videos.length === 0) return null;
-  const playable = videos.filter((v) => v && (v.stream_url || v.original_quality_url || v.fast_stream_url || v.hls_url));
+  const playable = videos.filter(
+    (v) => v && (v.stream_url || v.original_quality_url || v.mp4_url_fast || v.mp4_url_slow || v.fast_stream_url || v.hls_url)
+  );
   if (playable.length === 0) return videos[0];
   if (playable.length === 1) return playable[0];
   return playable.sort((a, b) => Number(b.size || 0) - Number(a.size || 0))[0];
 }
 
 /**
- * Queries www.terabox.app directly using sharing/link + share/list (no login required for metadata & thumbnails).
+ * Queries www.terabox.app directly using sharing/link (with sharing/embed fallback) + share/list.
  */
-async function resolveViaTeraBoxApp(shortToken) {
+async function resolveViaTeraBoxApp(shortToken, env = {}) {
   if (!shortToken) return null;
+  const ndus = (env.NDUS_COOKIE || "").trim();
+  const buildCookieHeader = (setCookie) => {
+    const pairs = [];
+    if (setCookie) {
+      for (const c of setCookie.split(/,(?=\s*[^;,\s]+=)/)) {
+        const kv = c.split(";")[0].trim();
+        if (kv) pairs.push(kv);
+      }
+    }
+    if (ndus && !pairs.some((p) => p.startsWith("ndus="))) {
+      pairs.push(`ndus=${ndus}`);
+      pairs.push("lang=en");
+    }
+    return pairs.join("; ");
+  };
+
   try {
-    const pageUrl = `https://www.terabox.app/sharing/link?surl=${encodeURIComponent(shortToken)}`;
-    const pageResp = await fetch(pageUrl, {
+    let pageResp = await fetch(`https://www.terabox.app/sharing/link?surl=${encodeURIComponent(shortToken)}`, {
       headers: {
         "User-Agent": DEFAULT_UA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        ...(ndus ? { Cookie: `ndus=${ndus}; lang=en` } : {}),
       },
     });
-    if (!pageResp.ok) return null;
+    let setCookie = pageResp.ok ? (pageResp.headers.get("set-cookie") || "") : "";
+    let html = pageResp.ok ? await pageResp.text() : "";
 
-    const setCookie = pageResp.headers.get("set-cookie") || "";
-    const html = await pageResp.text();
+    // If sharing/link returned short JSON verification challenge, try sharing/embed for jsToken + session cookies
+    if (!pageResp.ok || html.length < 1000) {
+      const embedResp = await fetch(`https://www.terabox.app/sharing/embed?surl=${encodeURIComponent(shortToken)}`, {
+        headers: {
+          "User-Agent": DEFAULT_UA,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          ...(ndus ? { Cookie: `ndus=${ndus}; lang=en` } : {}),
+        },
+      });
+      if (embedResp.ok) {
+        pageResp = embedResp;
+        setCookie = embedResp.headers.get("set-cookie") || setCookie;
+        html = await embedResp.text();
+      }
+    }
+    if (!pageResp.ok || !html) return null;
 
     let jsToken = "";
     const fnEncodedMatch = html.match(/fn%28%22([^%"]+)%22%29/);
@@ -327,9 +361,9 @@ async function resolveViaTeraBoxApp(shortToken) {
     if (fnEncodedMatch) jsToken = fnEncodedMatch[1];
     else if (fnPlainMatch) jsToken = fnPlainMatch[1];
 
-    let logId = "";
+    let logId = pageResp.headers.get("Logid") || "";
     const logMatch = (html + pageResp.url).match(/dp-logid=([^&"'\s]+)/);
-    if (logMatch) logId = logMatch[1];
+    if (!logId && logMatch) logId = logMatch[1];
 
     const fetchList = async (dirPath = "") => {
       const qs = new URLSearchParams({
@@ -354,13 +388,8 @@ async function resolveViaTeraBoxApp(shortToken) {
         "Referer": pageResp.url,
         "Accept": "application/json, text/plain, */*",
       };
-      if (setCookie) {
-        const cookiePairs = setCookie
-          .split(/,(?=\s*[^;,\s]+=)/)
-          .map((c) => c.split(";")[0].trim())
-          .filter(Boolean);
-        if (cookiePairs.length) listHeaders["Cookie"] = cookiePairs.join("; ");
-      }
+      const cookieHeader = buildCookieHeader(setCookie);
+      if (cookieHeader) listHeaders["Cookie"] = cookieHeader;
 
       const listResp = await fetch(`https://www.terabox.app/share/list?${qs.toString()}`, {
         headers: listHeaders,
@@ -400,7 +429,7 @@ async function resolveViaTeraBoxApp(shortToken) {
 /**
  * Shared stream & metadata resolver used by /api/resolve, /dl/:surl, and /webhook.
  */
-async function resolveTeraBoxStream(surlOrUrl) {
+async function resolveTeraBoxStream(surlOrUrl, env = {}) {
   const expanded = isShortenerUrl(surlOrUrl) ? await expandShortUrl(surlOrUrl) : surlOrUrl;
   const tokens = parseSurlTokens(expanded) || parseSurlTokens(surlOrUrl);
   if (!tokens) {
@@ -409,31 +438,26 @@ async function resolveTeraBoxStream(surlOrUrl) {
 
   const { shareToken, shortToken } = tokens;
   const candidates = [];
+  const pushUnique = (u) => {
+    if (u && !candidates.includes(u)) candidates.push(u);
+  };
 
-  // Canonical Terabox URL is by far the fastest and most reliable for iteraplay
-  const canonicalUrl = `https://terabox.com/s/${shareToken}`;
-  candidates.push(canonicalUrl);
-
-  if (/^https?:\/\//i.test(expanded) && isAllowedProxyUrl(expanded) && expanded !== canonicalUrl) {
-    candidates.push(expanded);
+  // Prioritize mirrors observed resolving fastest alongside original expanded URL
+  pushUnique(`https://1024terabox.com/s/${shareToken}`);
+  pushUnique(`https://terabox.com/s/${shareToken}`);
+  if (/^https?:\/\//i.test(expanded) && isAllowedProxyUrl(expanded)) {
+    pushUnique(expanded);
   }
-  const defaults = [
-    `https://teraboxapp.com/s/${shareToken}`,
-    `https://www.terabox.app/sharing/link?surl=${shortToken}`,
-    `https://1024terabox.com/s/${shareToken}`,
-  ];
-  for (const d of defaults) {
-    if (!candidates.includes(d)) candidates.push(d);
-  }
+  pushUnique(`https://www.terabox.app/sharing/link?surl=${shortToken}`);
+  pushUnique(`https://teraboxapp.com/s/${shareToken}`);
 
   const debugLogs = [];
   let iteraplayBlocked = false;
 
-  // 1. Primary Engine: iTeraPlay Import API (guarded with 6s timeout per candidate to prevent stalling)
-  for (const candidate of candidates) {
-    if (iteraplayBlocked) break;
+  const queryIteraplayCandidate = async (candidate, timeoutMs, siblingControllers = []) => {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
+    siblingControllers.push(controller);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const resolveResp = await fetch("https://iteraplay.in/api/videos/import", {
         method: "POST",
@@ -451,36 +475,61 @@ async function resolveTeraBoxStream(surlOrUrl) {
       debugLogs.push({ candidate, status: resolveResp.status, body: respText.slice(0, 200) });
 
       if (resolveResp.ok) {
-        try {
-          const data = JSON.parse(respText);
-          if (data && data.success && Array.isArray(data.videos) && data.videos.length > 0) {
-            const best = pickFirstPlayableVideo(data.videos);
-            // Enrich thumbnail from terabox.app if iteraplay returned none
-            if (best && !best.thumbnailUrl) {
-              const meta = await resolveViaTeraBoxApp(shortToken);
-              if (meta && meta.thumbnailUrl) best.thumbnailUrl = meta.thumbnailUrl;
+        const data = JSON.parse(respText);
+        if (data && data.success && Array.isArray(data.videos) && data.videos.length > 0) {
+          for (const c of siblingControllers) {
+            if (c !== controller) {
+              try { c.abort(); } catch (e) {}
             }
-            if (best && best !== data.videos[0]) {
-              data.videos = [best, ...data.videos.filter((v) => v !== best)];
-            }
-            return { ...data, surl: shareToken };
           }
-          if (data && (data.status === "captcha_required" || data.status === "rate_limited")) {
-            iteraplayBlocked = true;
+          const best = pickFirstPlayableVideo(data.videos);
+          if (best && !best.thumbnailUrl) {
+            const meta = await resolveViaTeraBoxApp(shortToken, env);
+            if (meta && meta.thumbnailUrl) best.thumbnailUrl = meta.thumbnailUrl;
           }
-        } catch (e) {}
+          if (best && best !== data.videos[0]) {
+            data.videos = [best, ...data.videos.filter((v) => v !== best)];
+          }
+          return { ...data, surl: shareToken };
+        }
+        if (data && (data.status === "captcha_required" || data.status === "rate_limited")) {
+          iteraplayBlocked = true;
+        }
       } else if (resolveResp.status === 429 || resolveResp.status === 403) {
         iteraplayBlocked = true;
       }
+      throw new Error(`HTTP ${resolveResp.status}`);
     } catch (err) {
-      debugLogs.push({ candidate, error: err.message });
+      if (!debugLogs.some((d) => d.candidate === candidate)) {
+        debugLogs.push({ candidate, error: err.message });
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
     }
+  };
+
+  // 1. Primary Engine: Race top 3 candidates in parallel (resolves in ~1.5-2.5s via fastest healthy mirror, 16s ceiling)
+  const primaryBatch = candidates.slice(0, 3);
+  const raceControllers = [];
+  try {
+    return await Promise.any(
+      primaryBatch.map((cand) => queryIteraplayCandidate(cand, 16000, raceControllers))
+    );
+  } catch (e) {
+    // Fallback to any remaining candidates sequentially if not rate-limited/blocked
+    if (!iteraplayBlocked) {
+      for (const candidate of candidates.slice(3)) {
+        if (iteraplayBlocked) break;
+        try {
+          return await queryIteraplayCandidate(candidate, 10000);
+        } catch (err) {}
+      }
+    }
   }
 
-  // 2. Secondary Fallback: terabox.app sharing/link + share/list
-  const tbAppMeta = await resolveViaTeraBoxApp(shortToken);
+  // 2. Secondary Fallback: terabox.app sharing/link + embed + share/list
+  const tbAppMeta = await resolveViaTeraBoxApp(shortToken, env);
   if (tbAppMeta && (tbAppMeta.stream_url || tbAppMeta.title || tbAppMeta.thumbnailUrl)) {
     return {
       success: true,
@@ -768,18 +817,28 @@ export default {
         });
       }
 
-      const resolved = await resolveTeraBoxStream(surl);
+      const resolved = await resolveTeraBoxStream(surl, env);
+      const tokens = parseSurlTokens(surl);
+      let dlTarget = "";
+      let fn = url.searchParams.get("fn") || `TeravidsPlay_${surl}.mp4`;
       if (resolved && resolved.success && Array.isArray(resolved.videos) && resolved.videos.length > 0) {
         const vid = resolved.videos[0];
-        const dlTarget = vid.original_quality_url || vid.stream_url;
-        const fn = url.searchParams.get("fn") || vid.title || `TeravidsPlay_${surl}.mp4`;
-        if (dlTarget && isAllowedProxyUrl(dlTarget)) {
-          try {
-            return await serveProxiedMedia(request, url.origin, dlTarget, true, fn);
-          } catch (e) {}
+        dlTarget = vid.original_quality_url || vid.stream_url || vid.mp4_url_fast || vid.mp4_url_slow || "";
+        fn = url.searchParams.get("fn") || vid.title || fn;
+      }
+      if (!dlTarget && tokens?.shortToken) {
+        const directMeta = await resolveViaTeraBoxApp(tokens.shortToken, env);
+        if (directMeta && directMeta.stream_url) {
+          dlTarget = directMeta.stream_url;
+          if (!url.searchParams.get("fn") && directMeta.title) fn = directMeta.title;
         }
       }
-      return Response.redirect(`${playerBase}/?v=${encodeURIComponent(surl)}&tg=1&dl=1`, 302);
+      if (dlTarget && isAllowedProxyUrl(dlTarget)) {
+        try {
+          return await serveProxiedMedia(request, url.origin, dlTarget, true, fn);
+        } catch (e) {}
+      }
+      return Response.redirect(`${playerBase}/?v=${encodeURIComponent(surl)}&tg=1&nodl=1`, 302);
     }
 
     // 2.3 High-Speed Metadata & Stream Resolution API (/api/resolve?surl=...)
@@ -797,7 +856,7 @@ export default {
         });
       }
 
-      const result = await resolveTeraBoxStream(surl);
+      const result = await resolveTeraBoxStream(surl, env);
       const hasMeta = result.partial_metadata && (result.partial_metadata.title || result.partial_metadata.thumbnailUrl);
       if (!result.success && hasMeta) {
         result.success = true;
@@ -857,7 +916,7 @@ export default {
           return new Response("OK", { status: 200 });
         }
 
-        const resolved = await resolveTeraBoxStream(extracted);
+        const resolved = await resolveTeraBoxStream(extracted, env);
         const tokens = parseSurlTokens(extracted);
         const surl = resolved?.surl || tokens?.shareToken || "";
 
