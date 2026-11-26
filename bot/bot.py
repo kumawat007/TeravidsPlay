@@ -265,11 +265,11 @@ def handle_channel_post(message: types.Message):
         thumb_url = data.get("thumbnail")
     elif surl:
         logger.info(f"Using instant Web Player fallback for channel post: {masked_token}")
-        title = title_hint or "TeraBox Video"
-        size = "1080p HD"
-        quality = "HD 1080p"
-        stream_url = ""
-        thumb_url = None
+        title = data.get("title") if (data.get("title") and data.get("title") not in ["TeraBox Video", "TeraBox Video Stream"]) else (title_hint or data.get("title") or "TeraBox Video")
+        size = data.get("size_formatted") or "1080p HD"
+        quality = data.get("quality") or "HD 1080p"
+        stream_url = data.get("stream_url") or ""
+        thumb_url = data.get("thumbnail")
     else:
         logger.warning(f"Resolution failed for channel post: {data.get('message')}")
         try:
@@ -497,11 +497,11 @@ def handle_private_post(message: types.Message):
         stream_url = data.get("stream_url")
         thumb_url = data.get("thumbnail")
     elif surl:
-        title = title_hint or "TeraBox Video"
-        size = "1080p HD"
-        quality = "HD 1080p"
-        stream_url = ""
-        thumb_url = None
+        title = data.get("title") if (data.get("title") and data.get("title") not in ["TeraBox Video", "TeraBox Video Stream"]) else (title_hint or data.get("title") or "TeraBox Video")
+        size = data.get("size_formatted") or "1080p HD"
+        quality = data.get("quality") or "HD 1080p"
+        stream_url = data.get("stream_url") or ""
+        thumb_url = data.get("thumbnail")
     else:
         if waiting_msg:
             try:

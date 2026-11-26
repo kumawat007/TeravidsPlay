@@ -228,27 +228,11 @@ function parseSurlTokens(input) {
 
   if (!rawToken) return null;
 
-  let shareToken;
-  let shortToken;
-  if (cameFromQuery) {
-    shortToken = rawToken;
-    shareToken = rawToken.length >= 23 && rawToken.startsWith("1") ? rawToken : "1" + rawToken;
-  } else if (cameFromPath) {
-    shareToken = rawToken.startsWith("1") ? rawToken : "1" + rawToken;
-    shortToken = rawToken.startsWith("1") && rawToken.length > 21 ? rawToken.slice(1) : rawToken;
-  } else {
-    // Bare token passed in ?v= or ?surl=
-    if (rawToken.startsWith("1") && rawToken.length >= 23) {
-      shareToken = rawToken;
-      shortToken = rawToken.slice(1);
-    } else if (!rawToken.startsWith("1")) {
-      shareToken = "1" + rawToken;
-      shortToken = rawToken;
-    } else {
-      shareToken = rawToken;
-      shortToken = rawToken.slice(1);
-    }
-  }
+  // Only strip '1' if token is purely alphanumeric (without '-' or '_') and 23+ chars long (legacy TeraBox style)
+  const isLegacyAlphaNum = /^1[a-zA-Z0-9]{22,}$/.test(rawToken) && !rawToken.includes("-") && !rawToken.includes("_");
+
+  const shareToken = rawToken.startsWith("1") ? rawToken : "1" + rawToken;
+  const shortToken = isLegacyAlphaNum ? rawToken.slice(1) : rawToken;
 
   return { rawToken, shareToken, shortToken };
 }
@@ -425,14 +409,18 @@ async function resolveTeraBoxStream(surlOrUrl) {
 
   const { shareToken, shortToken } = tokens;
   const candidates = [];
-  if (/^https?:\/\//i.test(expanded) && isAllowedProxyUrl(expanded)) {
+
+  // Canonical Terabox URL is by far the fastest and most reliable for iteraplay
+  const canonicalUrl = `https://terabox.com/s/${shareToken}`;
+  candidates.push(canonicalUrl);
+
+  if (/^https?:\/\//i.test(expanded) && isAllowedProxyUrl(expanded) && expanded !== canonicalUrl) {
     candidates.push(expanded);
   }
   const defaults = [
-    `https://terabox.com/s/${shareToken}`,
-    `https://1024terabox.com/s/${shareToken}`,
     `https://teraboxapp.com/s/${shareToken}`,
     `https://www.terabox.app/sharing/link?surl=${shortToken}`,
+    `https://1024terabox.com/s/${shareToken}`,
   ];
   for (const d of defaults) {
     if (!candidates.includes(d)) candidates.push(d);
@@ -441,9 +429,11 @@ async function resolveTeraBoxStream(surlOrUrl) {
   const debugLogs = [];
   let iteraplayBlocked = false;
 
-  // 1. Primary Engine: iTeraPlay Import API
+  // 1. Primary Engine: iTeraPlay Import API (guarded with 6s timeout per candidate to prevent stalling)
   for (const candidate of candidates) {
     if (iteraplayBlocked) break;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
     try {
       const resolveResp = await fetch("https://iteraplay.in/api/videos/import", {
         method: "POST",
@@ -454,6 +444,7 @@ async function resolveTeraBoxStream(surlOrUrl) {
           "Origin": "https://iteraplay.in",
         },
         body: JSON.stringify({ url: candidate }),
+        signal: controller.signal,
       });
 
       const respText = await resolveResp.text();
@@ -483,6 +474,8 @@ async function resolveTeraBoxStream(surlOrUrl) {
       }
     } catch (err) {
       debugLogs.push({ candidate, error: err.message });
+    } finally {
+      clearTimeout(timer);
     }
   }
 
