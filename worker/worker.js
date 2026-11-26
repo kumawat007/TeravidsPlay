@@ -89,6 +89,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "Range, Content-Type, Authorization, User-Agent, Accept",
+  "X-Content-Type-Options": "nosniff",
 };
 
 function hostMatchesList(hostname, list) {
@@ -262,7 +263,9 @@ function getContextualHeaders(targetUrl) {
       host.includes("replit.dev") ||
       host.includes("replit.app") ||
       host.includes("repl.co") ||
-      host.includes("iteraplay")
+      host.includes("iteraplay") ||
+      host.includes("qzz.io") ||
+      host.includes("pterabox.")
     ) {
       referer = "https://iteraplay.in/";
       origin = "https://iteraplay.in";
@@ -275,7 +278,7 @@ function getContextualHeaders(targetUrl) {
 }
 
 function sanitizeFilename(name) {
-  const base = (name || "video.mp4").replace(/[\r\n"\\/:*?<>|]+/g, "_").trim();
+  const base = (name || "video.mp4").replace(/[\x00-\x1f\x7f"\\/:*?<>|;]+/g, "_").trim();
   return base || "video.mp4";
 }
 
@@ -658,6 +661,22 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload
     contentType.includes("application/vnd.apple.mpegurl") ||
     contentType.includes("application/x-mpegurl");
 
+  // Block executable web document/script proxying to prevent Stored/Reflected XSS on Worker origin
+  if (
+    !isM3U8 &&
+    /(text\/html|application\/xhtml\+xml|image\/svg\+xml|text\/javascript|application\/javascript|application\/ecmascript)/i.test(
+      contentType
+    )
+  ) {
+    return new Response(
+      JSON.stringify({ error: "Unsupported Media Type: Active HTML/SVG/JS documents cannot be proxied." }),
+      {
+        status: 415,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      }
+    );
+  }
+
   // HLS Playlist Rewriter
   if (isM3U8 && upstreamResponse.status === 200) {
     const originalText = await upstreamResponse.text();
@@ -675,6 +694,7 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload
           return trimmed.replace(/URI="([^"]+)"/, (match, uri) => {
             try {
               const absolute = new URL(uri, finalUrl).toString();
+              if (!isAllowedProxyUrl(absolute)) return match;
               return `URI="${workerOrigin}/?url=${encodeURIComponent(absolute)}"`;
             } catch (e) {
               return match;
@@ -686,6 +706,7 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload
 
       try {
         const absoluteSegment = new URL(trimmed, finalUrl).toString();
+        if (!isAllowedProxyUrl(absoluteSegment)) return line;
         return `${workerOrigin}/?url=${encodeURIComponent(absoluteSegment)}`;
       } catch (e) {
         return line;
@@ -703,6 +724,10 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload
   }
 
   const responseHeaders = new Headers(upstreamResponse.headers);
+  responseHeaders.delete("Set-Cookie");
+  responseHeaders.delete("Set-Cookie2");
+  responseHeaders.set("X-Content-Type-Options", "nosniff");
+  responseHeaders.set("Content-Security-Policy", "sandbox; default-src 'none'");
   responseHeaders.set("Access-Control-Allow-Origin", "*");
   responseHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   responseHeaders.set("Access-Control-Allow-Headers", "Range, Content-Type, User-Agent, Accept");
@@ -737,7 +762,11 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload
 
   if (forceDownload) {
     const safeName = sanitizeFilename(customFilename || "TeravidsPlay_Video.mp4");
-    responseHeaders.set("Content-Disposition", `attachment; filename="${safeName}"`);
+    const asciiName = safeName.replace(/[^\x20-\x7e]+/g, "_") || "TeravidsPlay_Video.mp4";
+    responseHeaders.set(
+      "Content-Disposition",
+      `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
+    );
   }
 
   return new Response(upstreamResponse.body, {
@@ -906,11 +935,17 @@ export default {
         const msg =
           update.message || update.channel_post || update.edited_message || update.edited_channel_post;
 
-        if (!msg) {
+        if (!msg || !msg.chat?.id) {
           return new Response("OK", { status: 200 });
         }
+        if (!botToken) {
+          return new Response(JSON.stringify({ error: "BOT_TOKEN is not configured on Worker" }), {
+            status: 500,
+            headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+          });
+        }
 
-        const chatId = msg.chat?.id;
+        const chatId = msg.chat.id;
         const extracted = extractTeraBoxUrl(msg);
         if (!extracted) {
           return new Response("OK", { status: 200 });
@@ -943,11 +978,13 @@ export default {
           ? `${playerBase}/?v=${encodeURIComponent(surl)}&tg=1`
           : `${playerBase}/?stream=${encodeURIComponent(streamUrl)}&tg=1&title=${encodeURIComponent(title)}`;
 
-        const cleanTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 120);
-        const sizeLabel =
+        const escapeHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const cleanTitle = escapeHtml(title.slice(0, 120));
+        const sizeLabel = escapeHtml(
           sizeFormatted && sizeFormatted !== "HD Stream" && sizeFormatted !== "0 B" && sizeFormatted !== "Unknown Size"
             ? sizeFormatted
-            : "1080p HD";
+            : "1080p HD"
+        );
         const caption = `🎬 <b>${cleanTitle}</b>\n\n📦 <b>Size:</b> ${sizeLabel}`;
 
         const downloadTarget = surl
@@ -971,7 +1008,7 @@ export default {
 
         let published = false;
         // Upload real thumbnail binary via FormData (bypasses Telegram >1KB URL & host block issues)
-        if (thumbUrl && thumbUrl.startsWith("http")) {
+        if (thumbUrl && thumbUrl.startsWith("http") && isAllowedProxyUrl(thumbUrl)) {
           try {
             const { referer } = getContextualHeaders(thumbUrl);
             const imgResp = await fetch(thumbUrl, {
@@ -983,7 +1020,7 @@ export default {
             });
             if (imgResp.ok) {
               const imgBlob = await imgResp.blob();
-              if (imgBlob.size > 500) {
+              if (imgBlob.size > 500 && imgBlob.size <= 8 * 1024 * 1024) {
                 const form = new FormData();
                 form.append("chat_id", String(chatId));
                 form.append("caption", caption);

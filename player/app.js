@@ -176,6 +176,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function isSafeHttpUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return false;
+    try {
+      const parsed = new URL(rawUrl, window.location.href);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function renderOptionCheck(el, labelText, isActive) {
+    el.textContent = labelText;
+    if (isActive) {
+      el.classList.add('active-option');
+      const check = document.createElement('span');
+      check.className = 'check';
+      check.textContent = '✓';
+      el.append(' ', check);
+    } else {
+      el.classList.remove('active-option');
+    }
+  }
+
   function shouldProxyUrl(rawUrl) {
     if (!rawUrl || !rawUrl.startsWith('http')) return false;
     if (rawUrl.startsWith(WORKER_BASE)) return false;
@@ -229,15 +252,17 @@ document.addEventListener('DOMContentLoaded', () => {
     try { rawStream = atob(rawStream.slice(4)); } catch (e) {}
   }
 
-  const streamUrl = safeDecode(rawStream);
+  const rawDecodedStream = safeDecode(rawStream);
+  const streamUrl = isSafeHttpUrl(rawDecodedStream) ? rawDecodedStream : '';
   const cleanTitle = safeDecode(rawTitle);
   const cleanSize = safeDecode(rawSize);
-  const cleanThumb = safeDecode(rawThumb);
+  const rawDecodedThumb = safeDecode(rawThumb);
+  const cleanThumb = isSafeHttpUrl(rawDecodedThumb) ? rawDecodedThumb : '';
 
   // Guaranteed Poster Overlay Helpers (works even when <video poster> fails on mobile WebViews or blocked hosts)
   let hasRenderedVideoFrame = false;
   function setVideoPoster(rawThumbUrl) {
-    if (!rawThumbUrl || !rawThumbUrl.startsWith('http')) return;
+    if (!isSafeHttpUrl(rawThumbUrl)) return;
     const primarySrc = shouldProxyUrl(rawThumbUrl) ? toProxyUrl(rawThumbUrl) : rawThumbUrl;
     const fallbackSrc = primarySrc === rawThumbUrl ? toProxyUrl(rawThumbUrl) : rawThumbUrl;
 
@@ -379,7 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function hideControls() {
-    if (settingsMenu) settingsMenu.style.display = 'none';
+    closeSettingsMenu(false);
     if (!videoElement.paused) {
       playerContainer.classList.add('controls-hidden');
     }
@@ -798,13 +823,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('#subviewBoost .option-item').forEach(el => {
       const b = parseFloat(el.getAttribute('data-boost'));
       const cleanLabel = el.textContent.replace(' ✓', '').trim();
-      if (b === audioBoostLevel) {
-        el.classList.add('active-option');
-        el.innerHTML = `${cleanLabel} <span class="check">✓</span>`;
-      } else {
-        el.classList.remove('active-option');
-        el.textContent = cleanLabel;
-      }
+      renderOptionCheck(el, cleanLabel, b === audioBoostLevel);
     });
 
     showToast(`🔊 Audio Boost: ${label}`);
@@ -830,13 +849,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll('#subviewFit .option-item').forEach(el => {
       const cleanLabel = el.textContent.replace(' ✓', '').trim();
-      if (el.getAttribute('data-fit') === mode) {
-        el.classList.add('active-option');
-        el.innerHTML = `${cleanLabel} <span class="check">✓</span>`;
-      } else {
-        el.classList.remove('active-option');
-        el.textContent = cleanLabel;
-      }
+      renderOptionCheck(el, cleanLabel, el.getAttribute('data-fit') === mode);
     });
     showToast(`Aspect Ratio: ${label}`);
   }
@@ -858,13 +871,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('#subviewSpeed .option-item').forEach(el => {
       const spd = parseFloat(el.getAttribute('data-speed'));
       const cleanLabel = el.textContent.replace(' ✓', '').trim();
-      if (spd === val) {
-        el.classList.add('active-option');
-        el.innerHTML = `${cleanLabel} <span class="check">✓</span>`;
-      } else {
-        el.classList.remove('active-option');
-        el.textContent = cleanLabel;
-      }
+      renderOptionCheck(el, cleanLabel, spd === val);
     });
     showToast(`⚡ Speed: ${label}`);
   }
@@ -882,11 +889,9 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.type = 'button';
       btn.className = 'option-item' + (opt.id === selectedId ? ' active-option' : '');
       btn.setAttribute('data-quality', opt.id);
-      if (opt.id === selectedId) {
-        btn.innerHTML = `${opt.label} <span class="check">✓</span>`;
-        if (settingsCurrentQuality) settingsCurrentQuality.textContent = opt.label;
-      } else {
-        btn.textContent = opt.label;
+      renderOptionCheck(btn, opt.label, opt.id === selectedId);
+      if (opt.id === selectedId && settingsCurrentQuality) {
+        settingsCurrentQuality.textContent = opt.label;
       }
       btn.addEventListener('click', () => {
         switchQuality(opt);
@@ -894,6 +899,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       qualityOptionsList.appendChild(btn);
     });
+  }
+
+  function closeSettingsMenu(restoreFocus = false) {
+    if (!settingsMenu) return;
+    settingsMenu.style.display = 'none';
+    if (settingsBtn) {
+      settingsBtn.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) settingsBtn.focus();
+    }
   }
 
   function switchQuality(opt) {
@@ -927,10 +941,11 @@ document.addEventListener('DOMContentLoaded', () => {
       e.stopPropagation();
       const isVisible = settingsMenu.style.display === 'block';
       if (isVisible) {
-        settingsMenu.style.display = 'none';
+        closeSettingsMenu(false);
       } else {
         showSettingsMain();
         settingsMenu.style.display = 'block';
+        settingsBtn.setAttribute('aria-expanded', 'true');
         showControls();
       }
     });
@@ -939,14 +954,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (closeSettingsBtn) {
     closeSettingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      settingsMenu.style.display = 'none';
+      closeSettingsMenu(true);
     });
   }
 
   document.addEventListener('click', (e) => {
     if (settingsMenu && settingsMenu.style.display === 'block') {
       if (!settingsMenu.contains(e.target) && !settingsBtn.contains(e.target)) {
-        settingsMenu.style.display = 'none';
+        closeSettingsMenu(false);
       }
     }
   });
@@ -1213,6 +1228,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // 16. Keyboard Shortcuts
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'Escape' && settingsMenu && settingsMenu.style.display === 'block') {
+      e.preventDefault();
+      closeSettingsMenu(true);
+      return;
+    }
+    if (!isChannelUnlocked) return;
     switch (e.key) {
       case ' ':
         e.preventDefault();
@@ -1321,9 +1342,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let candidateIdx = -1;
   let desiredResumeTime = 0;
   let desiredAutoPlay = true;
+  let activeLoadGen = 0;
 
   function buildCandidatesForSingleUrl(rawUrl) {
-    if (!rawUrl || typeof rawUrl !== 'string') return [];
+    if (!isSafeHttpUrl(rawUrl)) return [];
     const list = [];
     const isHls = rawUrl.includes('.m3u8') || rawUrl.includes('/hls?');
     const proxied = toProxyUrl(rawUrl);
@@ -1371,6 +1393,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function loadCandidate(cand) {
+    const gen = ++activeLoadGen;
     const { url, isHls, isCors } = cand;
     loader.classList.remove('hidden');
     loaderText.textContent = url.startsWith(WORKER_BASE)
@@ -1428,7 +1451,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-        if (!data.fatal) return;
+        if (gen !== activeLoadGen || !data.fatal) return;
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries < 1 && !data.details?.includes('manifestLoad')) {
           netRetries++;
           hlsInstance.startLoad();
@@ -1452,7 +1475,7 @@ document.addEventListener('DOMContentLoaded', () => {
         desiredResumeTime = 0;
         videoElement.addEventListener('loadedmetadata', function onResumeMeta() {
           videoElement.removeEventListener('loadedmetadata', onResumeMeta);
-          videoElement.currentTime = resumeSnap;
+          if (gen === activeLoadGen) videoElement.currentTime = resumeSnap;
         });
       }
       if (desiredAutoPlay && isChannelUnlocked) {
@@ -1489,6 +1512,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   videoElement.addEventListener('error', (e) => {
+    if (hlsInstance) return;
     console.warn('HTML5 video candidate error, trying next fallback...', e);
     advancePlaybackCandidate();
   });
@@ -1505,7 +1529,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const teraboxPage = vId
       ? `https://terabox.com/s/${encodeURIComponent(vId.startsWith('1') ? vId : '1' + vId)}`
       : '#';
-    const dlHref = rawMediaUrl
+    const dlHref = isSafeHttpUrl(rawMediaUrl)
       ? (vId && allowWorkerDl ? `${WORKER_BASE}/dl/${encodeURIComponent(vId)}?fn=${encodeURIComponent(cleanName)}` : toProxyUrl(rawMediaUrl, { dl: true, filename: cleanName }))
       : teraboxPage;
 
@@ -1517,12 +1541,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // 20. Extract String URL from Stream Field (dict or string)
   function extractStreamMapEntries(val) {
     const entries = [];
-    if (typeof val === 'string' && val.startsWith('http')) {
+    if (typeof val === 'string' && isSafeHttpUrl(val)) {
       entries.push({ label: 'HD Stream', url: val });
     } else if (val && typeof val === 'object') {
       for (const [k, v] of Object.entries(val)) {
-        if (typeof v === 'string' && v.startsWith('http')) {
-          entries.push({ label: k.toUpperCase() === 'AUTO' ? 'Auto' : k, url: v });
+        if (typeof v === 'string' && isSafeHttpUrl(v)) {
+          entries.push({ label: k.toUpperCase() === 'AUTO' ? 'Auto' : String(k).slice(0, 24), url: v });
         }
       }
     }
@@ -1574,7 +1598,8 @@ document.addEventListener('DOMContentLoaded', () => {
           return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
         });
 
-        const mp4Url = vid.original_quality_url || vid.stream_url || vid.mp4_url_fast || vid.mp4_url_slow || '';
+        const rawMp4 = vid.original_quality_url || vid.stream_url || vid.mp4_url_fast || vid.mp4_url_slow || '';
+        const mp4Url = isSafeHttpUrl(rawMp4) ? rawMp4 : '';
         const qualityList = [];
         const seenQ = new Set();
         for (const e of hlsEntries) {

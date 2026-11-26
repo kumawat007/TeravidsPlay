@@ -197,10 +197,18 @@ def _pick_first_hls_url(streams: Any) -> Optional[str]:
     return None
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    """Safely converts numeric/string payloads into integers without throwing."""
+    try:
+        return max(0, int(float(value or 0)))
+    except (ValueError, TypeError):
+        return default
+
+
 def _parse_edge_video_payload(video: Dict[str, Any], source_name: str) -> Optional[Dict[str, Any]]:
     """Normalizes the JSON schema returned by Worker/iTeraPlay engines into TeravidsPlay format."""
     title = video.get("title", "TeraBox Video")
-    size = int(video.get("size") or 0)
+    size = _safe_int(video.get("size"))
     stream_url = (
         video.get("original_quality_url")
         or video.get("stream_url")
@@ -370,7 +378,7 @@ class TeraBoxExtractor:
                 partial = data.get("partial_metadata")
                 if partial and (partial.get("title") or partial.get("thumbnailUrl")):
                     title = partial.get("title", "TeraBox Video")
-                    size = int(partial.get("size") or 0)
+                    size = _safe_int(partial.get("size"))
                     thumb = partial.get("thumbnailUrl")
                     logger.info(f"[TeraBoxExtractor] Resolved partial metadata via Worker: '{title}'")
                     return {
@@ -644,7 +652,7 @@ class TeraBoxExtractor:
                 f"Diagnostics: {self.last_diagnostics}"
             )
             title = (partial_meta or {}).get("title") or "TeraBox Video Stream"
-            size_bytes = int((partial_meta or {}).get("size") or 0)
+            size_bytes = _safe_int((partial_meta or {}).get("size"))
             thumb = (partial_meta or {}).get("thumbnailUrl")
             return {
                 "success": True,

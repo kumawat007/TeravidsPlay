@@ -16,8 +16,8 @@
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <!-- HLS.js for Adaptive Streams -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+  <!-- HLS.js for Adaptive Streams (SRI Verified) -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js" integrity="sha384-oJR5PTkR0gvqJ/UnX1IkFQgxg6BByX7jPWmgSSY5dz0+Yc7O3mloo717zZpF/xpb" crossorigin="anonymous"></script>
 
   <!-- Google Fonts: Plus Jakarta Sans & Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -111,10 +111,10 @@
         <canvas id="ambientCanvas" class="ambient-canvas" width="64" height="36" aria-hidden="true"></canvas>
 
         <!-- Video Element -->
-        <video id="player" playsinline preload="metadata"></video>
+        <video id="player" width="1280" height="720" playsinline preload="metadata"></video>
 
         <!-- Guaranteed Preview Poster Image Overlay (visible cleanly before first frame renders) -->
-        <img id="videoPosterOverlay" class="video-poster-overlay" alt="" style="display: none;" />
+        <img id="videoPosterOverlay" class="video-poster-overlay" alt="" fetchpriority="high" style="display: none;" />
 
         <!-- TOP BAR (Inside Player) -->
         <div id="playerTopBar" class="player-overlay-top">
@@ -414,7 +414,7 @@
                 <span id="aspectRatioLabel">Fit</span>
               </button>
 
-              <button type="button" id="settingsBtn" class="ctrl-btn" title="Settings (Speed, Quality, Boost)" aria-label="Settings Menu">
+              <button type="button" id="settingsBtn" class="ctrl-btn" title="Settings (Speed, Quality, Boost)" aria-label="Settings Menu" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsMenu">
                 <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="3"></circle>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>

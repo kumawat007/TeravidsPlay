@@ -1529,7 +1529,7 @@ body {
   }
 
   .time-display {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .settings-popover {
@@ -1588,9 +1588,12 @@ body {
 
   .cinema-player-viewport {
     height: 100vh !important;
+    height: 100dvh !important;
     width: 100vw !important;
+    width: 100dvw !important;
     border-radius: 0 !important;
     max-height: 100vh !important;
+    max-height: 100dvh !important;
   }
 
   .video-info-section {

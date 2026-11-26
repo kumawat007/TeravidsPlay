@@ -11,6 +11,7 @@ import os
 import re
 import io
 import sys
+import hmac
 import json
 import time
 import html
@@ -128,7 +129,11 @@ def download_image_bytes(thumb_url: str, timeout: int = 8):
             curr_timeout = 4 if (not is_blocked_host and fetch_url == thumb_url) else timeout
             resp = requests.get(fetch_url, headers=hdrs, timeout=curr_timeout)
             ctype = (resp.headers.get("Content-Type") or "").lower()
-            if resp.status_code == 200 and len(resp.content) > 500 and (not ctype or "text/html" not in ctype):
+            if (
+                resp.status_code == 200
+                and 500 < len(resp.content) <= 8 * 1024 * 1024
+                and (not ctype or ("text/html" not in ctype and "svg" not in ctype))
+            ):
                 bio = io.BytesIO(resp.content)
                 bio.name = "preview.jpg"
                 return bio
@@ -186,7 +191,8 @@ def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, m
     """Sends the formatted video card with guaranteed photo preview."""
     safe_title = html.escape(title[:120])
     size_label = size if (size and size not in ["0 B", "Unknown Size", "HD Stream"]) else "1080p HD"
-    caption = f"🎬 <b>{safe_title}</b>\n\n📦 <b>Size:</b> {size_label}"
+    safe_size = html.escape(str(size_label))
+    caption = f"🎬 <b>{safe_title}</b>\n\n📦 <b>Size:</b> {safe_size}"
 
     # 1. Download real image bytes and upload directly (Fixes missing thumbnail preview!)
     if thumb_url and thumb_url.startswith("http"):
@@ -423,9 +429,17 @@ def handle_start(message: types.Message):
     bot.reply_to(message, welcome_text)
 
 
+BOT_USERNAME = ""
+try:
+    BOT_USERNAME = bot.get_me().username or ""
+except Exception:
+    BOT_USERNAME = ""
+
+
 @bot.message_handler(commands=["status"])
 def handle_status(message: types.Message):
-    if message.chat.type == "private" and not is_user_subscribed(message.from_user.id):
+    uid = message.from_user.id if message.from_user else None
+    if message.chat.type == "private" and uid is not None and not is_user_subscribed(uid):
         bot.reply_to(
             message,
             FORCE_SUB_TEXT,
@@ -434,12 +448,21 @@ def handle_status(message: types.Message):
         )
         return
 
+    global BOT_USERNAME
+    if not BOT_USERNAME:
+        try:
+            BOT_USERNAME = bot.get_me().username or "Teravidsplayerbot"
+        except Exception:
+            BOT_USERNAME = "Teravidsplayerbot"
+
+    safe_player = html.escape(PLAYER_URL) if PLAYER_URL else ""
+    safe_channel = html.escape(TARGET_CHANNEL_ID or "Not Set")
     status_text = (
         "⚙️ <b>TeravidsPlay System Diagnostics</b>\n\n"
         "• <b>Engine:</b> 🚀 High-Speed Direct Edge Engine (Active)\n"
-        f"• <b>Web Player:</b> {'✅ ' + PLAYER_URL if PLAYER_URL else '⚠️ Not Set'}\n"
-        f"• <b>Target Channel:</b> <code>{TARGET_CHANNEL_ID or 'Not Set'}</code>\n"
-        f"• <b>Bot Username:</b> @{bot.get_me().username}\n"
+        f"• <b>Web Player:</b> {'✅ ' + safe_player if safe_player else '⚠️ Not Set'}\n"
+        f"• <b>Target Channel:</b> <code>{safe_channel}</code>\n"
+        f"• <b>Bot Username:</b> @{html.escape(BOT_USERNAME)}\n"
     )
     bot.reply_to(message, status_text)
 
@@ -447,7 +470,8 @@ def handle_status(message: types.Message):
 @bot.message_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 def handle_private_post(message: types.Message):
     """Handles TeraBox links sent to the bot in private DM."""
-    if message.chat.type == "private" and not is_user_subscribed(message.from_user.id):
+    uid = message.from_user.id if message.from_user else None
+    if message.chat.type == "private" and uid is not None and not is_user_subscribed(uid):
         bot.reply_to(
             message,
             FORCE_SUB_TEXT,
@@ -508,9 +532,11 @@ def handle_private_post(message: types.Message):
                 bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
             except Exception:
                 pass
+        safe_err = html.escape(str(data.get("message", "Link expired or unreachable.")))
         bot.reply_to(
             message,
-            f"❌ <b>Resolution Failed:</b>\n{data.get('message', 'Link expired or unreachable.')}",
+            f"❌ <b>Resolution Failed:</b>\n{safe_err}",
+            parse_mode="HTML",
         )
         return
 
@@ -570,6 +596,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             if not admin_secret:
                 self.send_response(404)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 self.end_headers()
                 self.wfile.write(b'{"error":"Diagnostic endpoint disabled. Set ADMIN_SECRET to enable."}')
                 return
@@ -579,17 +606,21 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             auth_header = self.headers.get("Authorization", "")
             bearer_token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
 
-            if token != admin_secret and bearer_token != admin_secret:
+            token_ok = bool(token) and hmac.compare_digest(token, admin_secret)
+            bearer_ok = bool(bearer_token) and hmac.compare_digest(bearer_token, admin_secret)
+            if not token_ok and not bearer_ok:
                 self.send_response(401)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 self.end_headers()
                 self.wfile.write(b'{"error":"Unauthorized: Valid ADMIN_SECRET token required."}')
                 return
 
-            raw_target = query.get("url", ["https://1024terabox.com/s/18XBuJRPYrMNmrqzYZNqLbA"])[0]
+            raw_target = query.get("url", ["https://terabox.com/s/12-bl47-KEpRsDf840jID3A"])[0]
             if not is_terabox_url(raw_target):
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 self.end_headers()
                 self.wfile.write(b'{"error":"Invalid target: Domain must belong to authorized TeraBox services."}')
                 return
@@ -602,9 +633,8 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             }
 
             try:
-                surl_clean = extractor.parse_surl(raw_target) or raw_target
-                w_endpoint = f"{extractor.worker_url}/api/resolve?surl={urllib.parse.quote(surl_clean)}"
-                r = requests.get(w_endpoint, timeout=8)
+                w_endpoint = f"{extractor.worker_url}/api/resolve?surl={urllib.parse.quote(raw_target, safe='')}"
+                r = requests.get(w_endpoint, timeout=16)
                 diag["step1_worker_direct"] = {
                     "status_code": r.status_code,
                     "body": r.text[:250],
@@ -619,6 +649,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(json.dumps(diag, indent=2).encode("utf-8"))
             return
@@ -626,6 +657,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         # 2. Public Health Check Endpoint (Only used by Render/Koyeb uptime probes)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(b'{"status":"ok","service":"TeravidsPlay Bot"}')
 
