@@ -303,6 +303,7 @@ def extract_video_frame_bytes(stream_url: str, hls_url: str = "") -> Optional[io
     target_urls.append(media_url)
 
     for cand_url in target_urls:
+        ref_header = f"Referer: {_referer_for_url(cand_url)}\r\n"
         for seek_sec in ("3", "0"):
             try:
                 cmd = [
@@ -310,6 +311,7 @@ def extract_video_frame_bytes(stream_url: str, hls_url: str = "") -> Optional[io
                     "-hide_banner",
                     "-loglevel", "error",
                     "-user_agent", DEFAULT_UA,
+                    "-headers", ref_header,
                     "-ss", seek_sec,
                     "-i", cand_url,
                     "-frames:v", "1",
@@ -577,7 +579,7 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
             summary_markup,
             prefetched_bio=thumbs_cache.get(0),
             fallback_thumb=publish_subset[0].get("fallback_thumbnail") or "",
-            stream_url=publish_subset[0].get("stream_url", ""),
+            stream_url=publish_subset[0].get("stream_url") or publish_subset[0].get("hls_url") or "",
             allow_frame_capture=len(publish_subset) <= 3,
         )
 
@@ -637,8 +639,8 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
 def handle_channel_post(message: types.Message):
     """Catches all supported links posted in the channel and replaces them with rich TeravidsPlay stream cards."""
     logger.info(f"Incoming channel post in chat ID {message.chat.id}")
-    urls = extract_urls_from_message(message)
     direct_urls = extract_direct_video_urls_from_message(message)
+    urls = [u for u in extract_urls_from_message(message) if u not in direct_urls]
     if not urls and not direct_urls:
         return
 
@@ -875,8 +877,8 @@ def handle_private_post(message: types.Message):
         )
         return
 
-    urls = extract_urls_from_message(message)
     direct_urls = extract_direct_video_urls_from_message(message)
+    urls = [u for u in extract_urls_from_message(message) if u not in direct_urls]
     can_post_channel = bool(TARGET_CHANNEL_ID and is_channel_admin(uid))
 
     if not urls and not direct_urls:

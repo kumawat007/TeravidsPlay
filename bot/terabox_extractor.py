@@ -82,6 +82,12 @@ ALLOWED_TERABOX_HOSTS = {
     "vercel.app",
     "proxyking.workers.dev",
     "workers.dev",
+    "catbox.moe",
+    "files.catbox.moe",
+    "litter.catbox.moe",
+    "archive.org",
+    "r2.dev",
+    "b-cdn.net",
     "teravidsplay.onrender.com",
     "onrender.com",
 }
@@ -800,6 +806,31 @@ class TeraBoxExtractor:
             }
 
         clean_url = self._expand_short_url(share_url)
+
+        # Route Direct Public Video URLs (.mp4 / .m3u8 / Catbox / R2) immediately
+        if is_direct_video_url(clean_url) or is_direct_video_url(share_url):
+            target_media = clean_url if is_direct_video_url(clean_url) else share_url
+            parsed_u = urllib.parse.urlparse(target_media)
+            raw_fn = os.path.basename(urllib.parse.unquote(parsed_u.path or ""))
+            clean_name = re.sub(r"\.[a-z0-9]{2,5}$", "", raw_fn, flags=re.I) if raw_fn else ""
+            fallback_title = clean_name.replace("_", " ").replace("-", " ").strip() or "Full HD Cloud Stream"
+            is_hls = ".m3u8" in (parsed_u.path or "").lower()
+            direct_item = {
+                "success": True,
+                "file_id": "",
+                "title": fallback_title,
+                "size_bytes": 0,
+                "size_formatted": "Full HD Stream",
+                "thumbnail": "",
+                "fallback_thumbnail": "",
+                "stream_url": target_media,
+                "hls_url": target_media if is_hls else None,
+                "download_url": target_media,
+                "quality": "HD",
+                "duration": "",
+                "source": "Direct CDN Stream",
+            }
+            return {**direct_item, "surl": "", "dir_path": "", "videos": [direct_item]}
 
         # Route DiskWala URLs cleanly through Worker or direct metadata check
         if is_diskwala_url(clean_url) or is_diskwala_url(share_url):

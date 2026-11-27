@@ -281,7 +281,10 @@ function extractSharePath(input) {
  * while preserving genuine 22-char query tokens that happen to begin with '1'.
  */
 function parseSurlTokens(input) {
-  const str = (input || "").trim();
+  let str = (input || "").trim();
+  if (/^https?:\/+/i.test(str)) {
+    str = str.replace(/^https?:\/+/i, "https://");
+  }
   let rawToken = "";
 
   const pathMatch = str.match(/\/(?:s|v)\/([a-zA-Z0-9_-]+)/);
@@ -804,7 +807,12 @@ function mergeVideoMetadataFallbacks(videos, fallbackList) {
 async function resolveTeraBoxStream(surlOrUrl, env = {}, ctx = null, bypassCache = false) {
   const rawInput = (surlOrUrl || "").trim();
   const looksLikeUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(rawInput) || /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\//.test(rawInput);
-  const normalizedUrl = /^https?:\/\//i.test(rawInput) ? rawInput : `https://${rawInput}`;
+  let normalizedUrl = rawInput;
+  if (/^https?:\/+/i.test(normalizedUrl)) {
+    normalizedUrl = normalizedUrl.replace(/^https?:\/+/i, "https://");
+  } else if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\//.test(normalizedUrl)) {
+    normalizedUrl = `https://${normalizedUrl}`;
+  }
   if (looksLikeUrl && !isTeraBoxOrShortenerUrl(normalizedUrl)) {
     return {
       success: false,
@@ -1135,6 +1143,9 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl) {
   const responseHeaders = new Headers(upstreamResponse.headers);
   responseHeaders.delete("Set-Cookie");
   responseHeaders.delete("Set-Cookie2");
+  // Stream-Only enforcement: Remove attachment download triggers and enforce inline playback
+  responseHeaders.delete("Content-Disposition");
+  responseHeaders.set("Content-Disposition", "inline");
   if (cleanCt) {
     responseHeaders.set("Content-Type", cleanCt);
   }
@@ -1255,7 +1266,12 @@ export default {
       const streamParams = new URLSearchParams({ tg: "1" });
 
       if (/^[a-z][a-z0-9+.-]*:/i.test(surl) || /^[a-z0-9.-]+\.[a-z]{2,}\//i.test(surl)) {
-        const normalizedUrl = /^https?:\/\//i.test(surl) ? surl : `https://${surl}`;
+        let normalizedUrl = surl;
+        if (/^https?:\/+/i.test(normalizedUrl)) {
+          normalizedUrl = normalizedUrl.replace(/^https?:\/+/i, "https://");
+        } else {
+          normalizedUrl = `https://${normalizedUrl}`;
+        }
         if (!isTeraBoxOrShortenerUrl(normalizedUrl)) {
           return new Response(JSON.stringify({ error: "Unsupported or unauthorized URL" }), {
             status: 400,

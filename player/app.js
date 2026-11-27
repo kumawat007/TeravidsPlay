@@ -383,20 +383,8 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (e) {}
     };
 
-    capVid.addEventListener('loadedmetadata', () => {
-      if (myGen !== posterCaptureGen || hasRenderedVideoFrame || hasActivePosterImage) {
-        cleanupCap();
-        return;
-      }
-      const dur = Number.isFinite(capVid.duration) ? capVid.duration : 0;
-      capVid.currentTime = dur > 0 ? Math.min(2.0, Math.max(0.25, dur * 0.08)) : 0.5;
-    });
-
-    capVid.addEventListener('seeked', () => {
-      if (myGen !== posterCaptureGen || hasRenderedVideoFrame || hasActivePosterImage) {
-        cleanupCap();
-        return;
-      }
+    const captureCurrentFrame = () => {
+      if (myGen !== posterCaptureGen || hasRenderedVideoFrame || hasActivePosterImage) return;
       try {
         const w = capVid.videoWidth || 640;
         const h = capVid.videoHeight || 360;
@@ -414,6 +402,23 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       } catch (e) {}
+    };
+
+    capVid.addEventListener('loadeddata', () => {
+      captureCurrentFrame();
+    });
+
+    capVid.addEventListener('loadedmetadata', () => {
+      if (myGen !== posterCaptureGen || hasRenderedVideoFrame || hasActivePosterImage) {
+        cleanupCap();
+        return;
+      }
+      const dur = Number.isFinite(capVid.duration) ? capVid.duration : 0;
+      capVid.currentTime = dur > 0 ? Math.min(2.0, Math.max(0.25, dur * 0.08)) : 0.5;
+    });
+
+    capVid.addEventListener('seeked', () => {
+      captureCurrentFrame();
       cleanupCap();
     });
 
@@ -2181,9 +2186,20 @@ document.addEventListener('DOMContentLoaded', () => {
           setVideoPoster(partial.thumbnailUrl);
         }
       }
+      if (targetIdOrUrl && /\.(mp4|m3u8|webm|mov|m4v|mkv)(\?|$)/i.test(targetIdOrUrl)) {
+        syncChannelLink();
+        loadStream(targetIdOrUrl, cleanThumb);
+        return;
+      }
+
       syncChannelLink();
       showError('Video Unavailable', 'Could not resolve stream right now. Tap Try Again or check @teravidsplayer.');
     } catch (err) {
+      if (targetIdOrUrl && /\.(mp4|m3u8|webm|mov|m4v|mkv)(\?|$)/i.test(targetIdOrUrl)) {
+        syncChannelLink();
+        loadStream(targetIdOrUrl, cleanThumb);
+        return;
+      }
       showError('Connection Error', 'Failed to connect to streaming engine. Please try again.');
     }
   }
