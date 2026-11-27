@@ -602,13 +602,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Verified Telegram Mini App Membership Gate (Zero ?tg=1 or localStorage bypasses!)
+  // Verified Telegram Mini App Membership Gate & Centralized Player State
   let isChannelUnlocked = false;
   let isVerifyingMembership = hasTgInitData;
   let shouldAutoVerifyOnReturn = false;
   let pendingCandidateQueue = [];
   let pendingResumeTime = 0;
   let pendingAutoPlay = true;
+  let playlistVideos = [];
+  let activeVideoIndex = 0;
+  let activeFileId = '';
+  let suppressAutoResume = false;
+  let hlsInstance = null;
+  let playbackQueue = [];
+  let candidateIdx = -1;
+  let desiredResumeTime = 0;
+  let desiredAutoPlay = true;
+  let activeLoadGen = 0;
 
   const hasMedia = Boolean(vId || resolveInput || streamUrl);
 
@@ -1870,11 +1880,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // 18. Per-Video Auto-Resume from Last Position (Dual-Seek Safe)
-  let playlistVideos = [];
-  let activeVideoIndex = 0;
-  let activeFileId = '';
-  let suppressAutoResume = false;
-
   function getStorageKey() {
     const subKey = activeFileId || (playlistVideos.length > 1 ? `idx${activeVideoIndex}` : '');
     const base = vId || streamUrl.slice(-25) || 'default';
@@ -1905,13 +1910,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // 19. Resilient Multi-Candidate Stream Loader (Proxy-First for Blocked Hosts + Full Fallback Queue)
-  let hlsInstance = null;
-  let playbackQueue = [];
-  let candidateIdx = -1;
-  let desiredResumeTime = 0;
-  let desiredAutoPlay = true;
-  let activeLoadGen = 0;
-
   function resetScrubberUi() {
     if (scrubberProgress) scrubberProgress.style.width = '0%';
     if (scrubberBuffer) scrubberBuffer.style.width = '0%';
