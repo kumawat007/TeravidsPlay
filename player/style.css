@@ -575,17 +575,6 @@ body {
   padding-right: 14px;
 }
 
-.top-quality-badge {
-  background: transparent;
-  color: #ff4d4d;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 0, 0, 0.45);
-  white-space: nowrap;
-}
-
 .top-video-title {
   font-size: 14px;
   font-weight: 700;
@@ -1455,16 +1444,6 @@ body {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.meta-badge-red {
-  background: rgba(255, 0, 0, 0.16);
-  color: #ff4d4d;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 0, 0, 0.35);
 }
 
 .meta-badge-size {

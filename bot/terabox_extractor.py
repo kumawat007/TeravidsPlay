@@ -263,12 +263,6 @@ def extract_all_direct_video_urls(text: str) -> List[str]:
     return found
 
 
-def extract_url(text: str) -> Optional[str]:
-    """Finds and cleanly extracts the first verified TeraBox/DiskWala/shortener HTTP(S) URL from text."""
-    urls = extract_all_urls(text)
-    return urls[0] if urls else None
-
-
 def format_bytes(size_bytes: int) -> str:
     """Formats raw bytes into clean human-readable size string (e.g. 1.85 GB, 5.6 MB)."""
     try:

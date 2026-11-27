@@ -147,12 +147,6 @@ def _build_direct_stream_bundle(direct_url: str, title_hint: str = "") -> Dict[s
     }
 
 
-def extract_url_from_message(message: types.Message) -> str:
-    """Backward-compatible single URL extractor returning the first verified URL."""
-    urls = extract_urls_from_message(message)
-    return urls[0] if urls else ""
-
-
 def extract_title_hint_from_message(message: types.Message, urls: List[str]) -> str:
     """Extracts custom video title or caption written by the user alongside the link(s)."""
     text = (message.text or message.caption or "").strip()

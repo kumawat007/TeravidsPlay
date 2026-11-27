@@ -398,11 +398,6 @@ function resolveDirectMediaPayload(urlString) {
   }
 }
 
-function sanitizeFilename(name) {
-  const base = (name || "video.mp4").replace(/[\x00-\x1f\x7f"\\/:*?<>|;]+/g, "_").trim();
-  return base || "video.mp4";
-}
-
 function pickBestMediaItem(list) {
   if (!Array.isArray(list) || list.length === 0) return null;
   const videoRegex = /\.(mp4|mkv|webm|mov|m4v|avi|flv|ts)$/i;
