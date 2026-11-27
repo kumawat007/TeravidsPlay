@@ -15,11 +15,52 @@ document.addEventListener('DOMContentLoaded', () => {
     'teraboxapp.com',
     '1024tera.com',
     '1024terabox.com',
+    '1024tera.co',
+    '1024terabox.co',
+    'tera1024.com',
+    '4funbox.com',
+    'mirrobox.com',
+    'mirrorbox.com',
+    'nephobox.com',
+    'freeterabox.com',
+    'teraboxlink.com',
+    'terasharelink.com',
+    'terasharefile.com',
+    'terafileshare.com',
+    'teraboxurl.com',
+    'teraboxshare.com',
+    'teraboxsharefile.com',
+    'terabox.fun',
+    'terabox.link',
+    'terabox.me',
+    'terabox.club',
+    'teraboxdl.com',
+    'terabox1.com',
+    'teraboxpage.com',
+    '1024terabox.app',
+    'teraboxfileshare.com',
+    'terashareus.com',
+    '1024tenbox.com',
+    '1024teradl.com',
+    'teraboxlinks.com',
+    'teraboxfast.com',
+    'tibibox.com',
+    'momerybox.com',
+    'memorybox.com',
+    'tribox.com',
+    'dubox.com',
+    'diskwala.com',
+    'diskwala.net',
+    'diskwala-secure-dl.com',
+    'udapi.diskwala.com',
+    'tn1.diskwala.com',
     'baidupcs.com',
     'bdydns.com',
+    'baidu.com',
     'teraboxcdn.com',
     'iteraplay.in',
     'iteraplay.com',
+    'playterabox.com',
     'qzz.io',
     'cdniteraplay.qzz.io',
     'cloudflarestorage.com',
@@ -123,14 +164,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const errorHeading = document.getElementById('errorHeading');
   const errorMsg = document.getElementById('errorMsg');
   const retryBtn = document.getElementById('retryBtn');
-  const externalDownloadBtn = document.getElementById('externalDownloadBtn');
+  const externalChannelBtn = document.getElementById('externalChannelBtn');
 
-  // Below-player metadata & external actions
+  // Below-player metadata, playlist & external actions
   const videoTitleElem = document.getElementById('videoTitle');
   const fileSizeElem = document.getElementById('fileSize');
   const btnDownloadExt = document.getElementById('btnDownloadExt');
   const btnShareExt = document.getElementById('btnShareExt');
   const ambientCanvas = document.getElementById('ambientCanvas');
+  const playlistControlsRow = document.getElementById('playlistControlsRow');
+  const prevVideoBtn = document.getElementById('prevVideoBtn');
+  const nextVideoBtn = document.getElementById('nextVideoBtn');
+  const playlistPositionLabel = document.getElementById('playlistPositionLabel');
+  const playlistSection = document.getElementById('playlistSection');
+  const playlistHeading = document.getElementById('playlistHeading');
+  const playlistCountBadge = document.getElementById('playlistCountBadge');
+  const playlistList = document.getElementById('playlistList');
 
   // Helper Functions
   function safeDecode(val, fallback = '') {
@@ -186,6 +235,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function makeSvgEl(tag, attrs = {}) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      node.setAttribute(k, String(v));
+    }
+    return node;
+  }
+
+  function setSvgChildren(svgEl, specs) {
+    if (!svgEl) return;
+    svgEl.replaceChildren(...specs.map(([tag, attrs]) => makeSvgEl(tag, attrs)));
+  }
+
   function renderOptionCheck(el, labelText, isActive) {
     el.textContent = labelText;
     if (isActive) {
@@ -222,14 +285,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!rawVal) return '';
     const mPath = rawVal.match(/\/(?:s|v)\/([a-zA-Z0-9_-]+)/);
     if (mPath) return mPath[1];
+    const mDw = rawVal.match(/\/(?:app|share|d|f)\/([a-fA-F0-9]{24})/i);
+    if (mDw) return mDw[1];
     const mQuery = rawVal.match(/[?&](?:surl|v|s)=([a-zA-Z0-9_-]+)/);
     if (mQuery) return mQuery[1];
-    return rawVal.split(/[?&#]/)[0].trim();
+    const stripped = rawVal.split(/[?&#]/)[0].trim();
+    return /^https?:\/\//i.test(stripped) ? '' : stripped;
   }
 
   // 3. Parse Parameters & Telegram Auto-Unlock
   const urlParams = new URLSearchParams(window.location.search);
   const rawInputUrl = urlParams.get('url') || '';
+  const rawPathParam = urlParams.get('path') || '';
+  const requestedIdxRaw = parseInt(urlParams.get('idx') || '0', 10);
+  const requestedIdx = Number.isFinite(requestedIdxRaw) && requestedIdxRaw >= 0 ? requestedIdxRaw : 0;
+  const requestedFid = (urlParams.get('fid') || '').trim();
   let rawVId = urlParams.get('v') || urlParams.get('s') || '';
   if (!rawVId) {
     const pathMatch = window.location.pathname.match(/\/(v|s)\/([a-zA-Z0-9_-]+)/);
@@ -241,6 +311,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const resolveInput = rawInputUrl || rawVId;
   const vId = normalizeSurlToken(rawVId);
+  let resolvedSurl = vId;
+  let activeDirPath = rawPathParam || '';
 
   let rawStream = urlParams.get('stream') || '';
   const rawTitle = urlParams.get('title') || '';
@@ -311,11 +383,38 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn('[TeravidsPlay] LocalStorage access restricted:', e);
   }
 
+  const hasMedia = Boolean(vId || resolveInput || streamUrl);
+
+  function setGateInert(locked) {
+    const targets = [
+      document.querySelector('.app-navbar'),
+      videoElement,
+      centerPlayBtn,
+      document.getElementById('playerTopBar'),
+      document.getElementById('playerBottomBar'),
+      settingsMenu,
+      errorOverlay,
+      document.querySelector('.video-info-section'),
+      playlistControlsRow,
+      playlistSection,
+    ];
+    targets.forEach((el) => {
+      if (!el) return;
+      el.inert = Boolean(locked);
+    });
+  }
+
   function checkChannelGate() {
-    if (isChannelUnlocked) {
+    if (isChannelUnlocked || !hasMedia) {
       if (channelGateOverlay) channelGateOverlay.style.display = 'none';
+      setGateInert(false);
     } else {
       if (channelGateOverlay) channelGateOverlay.style.display = 'flex';
+      setGateInert(true);
+      const gateFocusTarget = document.getElementById('gateJoinBtn') || gateUnlockBtn;
+      if (gateFocusTarget) {
+        requestAnimationFrame(() => gateFocusTarget.focus({ preventScroll: true }));
+      }
     }
   }
 
@@ -328,7 +427,9 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem(UNLOCK_KEY, 'true');
       } catch (e) {}
       if (channelGateOverlay) channelGateOverlay.style.display = 'none';
+      setGateInert(false);
       showToast('🎉 Video Unlocked!');
+      if (playBtn) playBtn.focus({ preventScroll: true });
       videoElement.play().catch(() => {
         updatePlayIcons();
       });
@@ -336,7 +437,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // View Switching
-  const hasMedia = Boolean(vId || resolveInput || streamUrl);
 
   function activateHomeView() {
     if (homePage) homePage.style.display = 'flex';
@@ -437,9 +537,22 @@ document.addEventListener('DOMContentLoaded', () => {
   function triggerCenterRipple(type) {
     if (!centerActionRipple) return;
     clearTimeout(centerRippleTimer);
-    centerActionRipple.innerHTML = type === 'play'
-      ? '<svg aria-hidden="true" width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>'
-      : '<svg aria-hidden="true" width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+    const svg = makeSvgEl('svg', {
+      'aria-hidden': 'true',
+      width: '42',
+      height: '42',
+      viewBox: '0 0 24 24',
+      fill: 'currentColor',
+    });
+    if (type === 'play') {
+      setSvgChildren(svg, [['polygon', { points: '6 4 20 12 6 20 6 4' }]]);
+    } else {
+      setSvgChildren(svg, [
+        ['rect', { x: '6', y: '4', width: '4', height: '16' }],
+        ['rect', { x: '14', y: '4', width: '4', height: '16' }],
+      ]);
+    }
+    centerActionRipple.replaceChildren(svg);
     centerActionRipple.style.display = 'flex';
     centerActionRipple.classList.remove('animate');
     void centerActionRipple.offsetWidth;
@@ -523,7 +636,8 @@ document.addEventListener('DOMContentLoaded', () => {
       tapCount = 0;
       lastTapSide = null;
       if (side === 'right') {
-        videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
+        const dur = Number.isFinite(videoElement.duration) ? videoElement.duration : Infinity;
+        videoElement.currentTime = Math.min(dur, videoElement.currentTime + 10);
         showRipple('right');
       } else {
         videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
@@ -536,15 +650,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // 5. Play / Pause Control
   function updatePlayIcons() {
     const isPlaying = !videoElement.paused;
+    const specs = isPlaying
+      ? [
+          ['rect', { x: '6', y: '4', width: '4', height: '16' }],
+          ['rect', { x: '14', y: '4', width: '4', height: '16' }],
+        ]
+      : [['polygon', { points: '6 4 20 12 6 20 6 4' }]];
+
+    setSvgChildren(playIcon, specs);
+    setSvgChildren(centerPlayIcon, specs);
+
     if (isPlaying) {
-      playIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
-      centerPlayIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
       centerPlayBtn.setAttribute('aria-label', 'Pause Video');
       centerPlayBtn.title = 'Pause Video';
       centerPlayBtn.classList.remove('hidden');
     } else {
-      playIcon.innerHTML = '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
-      centerPlayIcon.innerHTML = '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
       centerPlayBtn.setAttribute('aria-label', 'Play Video');
       centerPlayBtn.title = 'Play Video';
       centerPlayBtn.classList.remove('hidden');
@@ -602,7 +722,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (forward10Btn) {
     forward10Btn.addEventListener('click', () => {
-      videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
+      const dur = Number.isFinite(videoElement.duration) ? videoElement.duration : Infinity;
+      videoElement.currentTime = Math.min(dur, videoElement.currentTime + 10);
       showRipple('right');
     });
   }
@@ -625,7 +746,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isScrubbing = false;
 
   function updateScrubber() {
-    if (!videoElement.duration || isScrubbing) return;
+    if (!Number.isFinite(videoElement.duration) || videoElement.duration <= 0 || isScrubbing) return;
     const progress = (videoElement.currentTime / videoElement.duration) * 100;
     scrubberProgress.style.width = `${progress}%`;
     scrubberThumb.style.left = `${progress}%`;
@@ -646,7 +767,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   videoElement.addEventListener('timeupdate', updateScrubber);
   videoElement.addEventListener('loadedmetadata', () => {
-    durationTimeElem.textContent = formatTime(videoElement.duration);
+    durationTimeElem.textContent = Number.isFinite(videoElement.duration) ? formatTime(videoElement.duration) : 'LIVE';
     checkResume();
   });
 
@@ -670,7 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function seekToPosition(e) {
-    if (!videoElement.duration) return;
+    if (!Number.isFinite(videoElement.duration) || videoElement.duration <= 0) return;
     const pct = getScrubberPct(e);
     videoElement.currentTime = pct * videoElement.duration;
     scrubberProgress.style.width = `${pct * 100}%`;
@@ -700,7 +821,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('touchmove', (e) => {
     if (isScrubbing) {
       seekToPosition(e);
-      if (videoElement.duration) {
+      if (Number.isFinite(videoElement.duration) && videoElement.duration > 0) {
         const pct = getScrubberPct(e);
         scrubberTooltip.textContent = formatTime(pct * videoElement.duration);
         scrubberTooltip.style.left = `${pct * 100}%`;
@@ -718,7 +839,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   scrubberContainer.addEventListener('mousemove', (e) => {
-    if (videoElement.duration) {
+    if (Number.isFinite(videoElement.duration) && videoElement.duration > 0) {
       const pct = getScrubberPct(e);
       scrubberTooltip.textContent = formatTime(pct * videoElement.duration);
       scrubberTooltip.style.left = `${pct * 100}%`;
@@ -732,12 +853,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 8. Volume & Mute Controls
   function updateVolumeIcon() {
+    const spk = ['polygon', { points: '11 5 6 9 2 9 2 15 6 15 11 19 11 5' }];
     if (videoElement.muted || videoElement.volume === 0) {
-      volumeIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line>';
+      setSvgChildren(volumeIcon, [
+        spk,
+        ['line', { x1: '23', y1: '9', x2: '17', y2: '15' }],
+        ['line', { x1: '17', y1: '9', x2: '23', y2: '15' }],
+      ]);
     } else if (videoElement.volume < 0.5) {
-      volumeIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>';
+      setSvgChildren(volumeIcon, [
+        spk,
+        ['path', { d: 'M15.54 8.46a5 5 0 0 1 0 7.07' }],
+      ]);
     } else {
-      volumeIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>';
+      setSvgChildren(volumeIcon, [
+        spk,
+        ['path', { d: 'M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07' }],
+      ]);
     }
   }
 
@@ -882,7 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderQualityOptions(items, selectedId) {
     if (!qualityOptionsList) return;
-    qualityOptionsList.innerHTML = '';
+    qualityOptionsList.textContent = '';
     const list = items.length ? items : [{ id: 'auto', label: 'Auto' }];
     list.forEach((opt) => {
       const btn = document.createElement('button');
@@ -895,7 +1027,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       btn.addEventListener('click', () => {
         switchQuality(opt);
-        showSettingsMain();
+        showSettingsMain(true);
       });
       qualityOptionsList.appendChild(btn);
     });
@@ -927,13 +1059,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function showSettingsMain() {
+  let lastSettingsTrigger = null;
+
+  function showSettingsMain(restoreFocus = false) {
     settingsTitle.textContent = 'Playback Settings';
     settingsMainView.style.display = 'block';
     subviewSpeed.style.display = 'none';
     subviewQuality.style.display = 'none';
     subviewBoost.style.display = 'none';
     subviewFit.style.display = 'none';
+    if (restoreFocus) {
+      const target = lastSettingsTrigger || rowSpeed;
+      if (target) target.focus({ preventScroll: true });
+    }
+  }
+
+  function openSettingsSubview(subviewEl, titleText, triggerEl) {
+    if (!subviewEl) return;
+    lastSettingsTrigger = triggerEl || rowSpeed;
+    settingsTitle.textContent = titleText;
+    settingsMainView.style.display = 'none';
+    subviewSpeed.style.display = 'none';
+    subviewQuality.style.display = 'none';
+    subviewBoost.style.display = 'none';
+    subviewFit.style.display = 'none';
+    subviewEl.style.display = 'block';
+    const focusEl = subviewEl.querySelector('.subview-back-btn') || subviewEl.querySelector('.option-item');
+    if (focusEl) focusEl.focus({ preventScroll: true });
   }
 
   if (settingsBtn) {
@@ -943,10 +1095,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isVisible) {
         closeSettingsMenu(false);
       } else {
-        showSettingsMain();
+        lastSettingsTrigger = null;
+        showSettingsMain(true);
         settingsMenu.style.display = 'block';
         settingsBtn.setAttribute('aria-expanded', 'true');
         showControls();
+        if (rowSpeed) rowSpeed.focus({ preventScroll: true });
       }
     });
   }
@@ -966,55 +1120,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  if (rowSpeed) {
-    rowSpeed.addEventListener('click', () => {
-      settingsTitle.textContent = 'Playback Speed';
-      settingsMainView.style.display = 'none';
-      subviewSpeed.style.display = 'block';
-    });
-  }
-
-  if (rowQuality) {
-    rowQuality.addEventListener('click', () => {
-      settingsTitle.textContent = 'Resolution & Quality';
-      settingsMainView.style.display = 'none';
-      subviewQuality.style.display = 'block';
-    });
-  }
-
-  if (rowBoost) {
-    rowBoost.addEventListener('click', () => {
-      settingsTitle.textContent = 'Audio Boost (Web Audio)';
-      settingsMainView.style.display = 'none';
-      subviewBoost.style.display = 'block';
-    });
-  }
-
-  if (rowFit) {
-    rowFit.addEventListener('click', () => {
-      settingsTitle.textContent = 'Screen Fit Mode';
-      settingsMainView.style.display = 'none';
-      subviewFit.style.display = 'block';
-    });
-  }
+  if (rowSpeed) rowSpeed.addEventListener('click', () => openSettingsSubview(subviewSpeed, 'Playback Speed', rowSpeed));
+  if (rowQuality) rowQuality.addEventListener('click', () => openSettingsSubview(subviewQuality, 'Resolution & Quality', rowQuality));
+  if (rowBoost) rowBoost.addEventListener('click', () => openSettingsSubview(subviewBoost, 'Audio Boost (Web Audio)', rowBoost));
+  if (rowFit) rowFit.addEventListener('click', () => openSettingsSubview(subviewFit, 'Screen Fit Mode', rowFit));
 
   document.querySelectorAll('.subview-back-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      showSettingsMain();
+      showSettingsMain(true);
     });
   });
 
   document.querySelectorAll('#subviewSpeed .option-item').forEach(item => {
     item.addEventListener('click', () => {
       setSpeed(item.getAttribute('data-speed'));
-      showSettingsMain();
+      showSettingsMain(true);
     });
   });
 
   document.querySelectorAll('#subviewBoost .option-item').forEach(item => {
     item.addEventListener('click', () => {
       setBoostLevel(parseFloat(item.getAttribute('data-boost')));
-      showSettingsMain();
+      showSettingsMain(true);
     });
   });
 
@@ -1023,7 +1150,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const f = item.getAttribute('data-fit');
       const label = f === 'contain' ? 'Fit (16:9)' : (f === 'cover' ? 'Fill (Crop)' : 'Stretch');
       setAspectMode(f, label);
-      showSettingsMain();
+      showSettingsMain(true);
     });
   });
 
@@ -1052,14 +1179,18 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (videoElement.webkitEnterFullscreen) {
         videoElement.webkitEnterFullscreen();
       }
-      fullscreenIcon.innerHTML = '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>';
+      setSvgChildren(fullscreenIcon, [
+        ['path', { d: 'M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3' }],
+      ]);
     } else {
       if (document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
       } else if (document.webkitExitFullscreen) {
         document.webkitExitFullscreen();
       }
-      fullscreenIcon.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>';
+      setSvgChildren(fullscreenIcon, [
+        ['path', { d: 'M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3' }],
+      ]);
     }
   }
 
@@ -1244,11 +1375,13 @@ document.addEventListener('DOMContentLoaded', () => {
         videoElement.currentTime = Math.max(0, videoElement.currentTime - 10);
         showRipple('left');
         break;
-      case 'ArrowRight':
+      case 'ArrowRight': {
         e.preventDefault();
-        videoElement.currentTime = Math.min(videoElement.duration || 0, videoElement.currentTime + 10);
+        const dur = Number.isFinite(videoElement.duration) ? videoElement.duration : Infinity;
+        videoElement.currentTime = Math.min(dur, videoElement.currentTime + 10);
         showRipple('right');
         break;
+      }
       case 'ArrowUp':
         e.preventDefault();
         videoElement.volume = Math.min(1, videoElement.volume + 0.1);
@@ -1314,12 +1447,25 @@ document.addEventListener('DOMContentLoaded', () => {
     ambientRaf = null;
   });
 
-  // 18. Auto-Resume from Last Position
-  const storageKey = `teravids_pos_${vId || streamUrl.slice(-25) || 'default'}`;
+  // 18. Per-Video Auto-Resume from Last Position (Dual-Seek Safe)
+  let playlistVideos = [];
+  let activeVideoIndex = 0;
+  let activeFileId = '';
+  let suppressAutoResume = false;
+
+  function getStorageKey() {
+    const subKey = activeFileId || (playlistVideos.length > 1 ? `idx${activeVideoIndex}` : '');
+    const base = vId || streamUrl.slice(-25) || 'default';
+    return `teravids_pos_${base}${subKey ? '_' + subKey : ''}`;
+  }
 
   function checkResume() {
+    if (suppressAutoResume) {
+      suppressAutoResume = false;
+      return;
+    }
     let saved = null;
-    try { saved = localStorage.getItem(storageKey); } catch (e) {}
+    try { saved = localStorage.getItem(getStorageKey()); } catch (e) {}
     if (saved && Number(saved) > 5) {
       const pos = Number(saved);
       videoElement.currentTime = pos;
@@ -1332,7 +1478,7 @@ document.addEventListener('DOMContentLoaded', () => {
       hideVideoPoster();
     }
     if (Math.floor(videoElement.currentTime) % 3 === 0 && videoElement.currentTime > 5) {
-      try { localStorage.setItem(storageKey, Math.floor(videoElement.currentTime)); } catch (e) {}
+      try { localStorage.setItem(getStorageKey(), Math.floor(videoElement.currentTime)); } catch (e) {}
     }
   });
 
@@ -1344,17 +1490,37 @@ document.addEventListener('DOMContentLoaded', () => {
   let desiredAutoPlay = true;
   let activeLoadGen = 0;
 
+  function resetScrubberUi() {
+    if (scrubberProgress) scrubberProgress.style.width = '0%';
+    if (scrubberBuffer) scrubberBuffer.style.width = '0%';
+    if (scrubberThumb) scrubberThumb.style.left = '0%';
+    if (currentTimeElem) currentTimeElem.textContent = '00:00';
+    if (durationTimeElem) durationTimeElem.textContent = '00:00';
+  }
+
   function buildCandidatesForSingleUrl(rawUrl) {
     if (!isSafeHttpUrl(rawUrl)) return [];
     const list = [];
     const isHls = rawUrl.includes('.m3u8') || rawUrl.includes('/hls?');
     const proxied = toProxyUrl(rawUrl);
+    const sameOriginOrWorker = rawUrl.startsWith(WORKER_BASE) || rawUrl.startsWith(window.location.origin);
+
+    // If Web Audio API MediaElementAudioSource is attached, Chrome mutes non-CORS streams permanently
+    if (mediaSourceAttached) {
+      if (sameOriginOrWorker) {
+        list.push({ url: rawUrl, isHls, isCors: true, raw: rawUrl });
+      } else {
+        list.push({ url: proxied, isHls, isCors: true, raw: rawUrl });
+      }
+      return list;
+    }
+
     if (shouldProxyUrl(rawUrl)) {
       list.push({ url: proxied, isHls, isCors: true, raw: rawUrl });
       list.push({ url: rawUrl, isHls, isCors: false, raw: rawUrl });
     } else {
-      list.push({ url: rawUrl, isHls, isCors: false, raw: rawUrl });
-      if (rawUrl.startsWith('http') && !rawUrl.startsWith(WORKER_BASE)) {
+      list.push({ url: rawUrl, isHls, isCors: sameOriginOrWorker, raw: rawUrl });
+      if (rawUrl.startsWith('http') && !sameOriginOrWorker) {
         list.push({ url: proxied, isHls, isCors: true, raw: rawUrl });
       }
     }
@@ -1373,7 +1539,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function advancePlaybackCandidate() {
     candidateIdx++;
     if (candidateIdx >= playbackQueue.length) {
-      showError('Playback Interrupted', 'Unable to decode video stream. The link may have expired or is blocked.');
+      showError('Playback Interrupted', 'Unable to decode video stream right now. Tap Try Again or check @teravidsplayer.');
       return;
     }
     loadCandidate(playbackQueue[candidateIdx]);
@@ -1383,10 +1549,11 @@ document.addEventListener('DOMContentLoaded', () => {
     playbackQueue = dedupeCandidates(candidates);
     candidateIdx = -1;
     desiredResumeTime = resumeAt;
+    suppressAutoResume = resumeAt > 0;
     desiredAutoPlay = shouldPlay;
 
     if (playbackQueue.length === 0) {
-      showError('Missing Stream URL', 'No valid stream URL was provided.');
+      showError('Missing Stream URL', 'No valid stream URL was available. Tap Try Again to refresh.');
       return;
     }
     advancePlaybackCandidate();
@@ -1406,13 +1573,17 @@ document.addEventListener('DOMContentLoaded', () => {
       hlsInstance = null;
     }
 
-    if (isCors || url.startsWith(WORKER_BASE)) {
+    if (mediaSourceAttached || isCors || url.startsWith(WORKER_BASE)) {
       videoElement.crossOrigin = 'anonymous';
     } else {
       videoElement.removeAttribute('crossorigin');
     }
 
     if (isHls && typeof Hls !== 'undefined' && Hls.isSupported()) {
+      if (videoElement.hasAttribute('src')) {
+        videoElement.removeAttribute('src');
+        videoElement.load();
+      }
       let netRetries = 0;
       let mediaRetries = 0;
 
@@ -1428,6 +1599,7 @@ document.addEventListener('DOMContentLoaded', () => {
       hlsInstance.attachMedia(videoElement);
 
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (gen !== activeLoadGen) return;
         loader.classList.add('hidden');
         if (desiredResumeTime > 1) {
           videoElement.currentTime = desiredResumeTime;
@@ -1488,12 +1660,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function loadStream(url, poster = '') {
     hasRenderedVideoFrame = false;
+    resetScrubberUi();
     if (poster) setVideoPoster(poster);
     if (!url) {
       showError('Missing Stream URL', 'No valid stream URL was provided.');
       return;
     }
-    setDownloadTargets(url, topVideoTitle.textContent || 'TeravidsPlay_Video');
+    setDownloadTargets(url, topVideoTitle.textContent || 'TeravidsPlay_Video', true, activeVideoIndex, activeFileId);
     startCandidateQueue(buildCandidatesForSingleUrl(url));
   }
 
@@ -1517,6 +1690,13 @@ document.addEventListener('DOMContentLoaded', () => {
     advancePlaybackCandidate();
   });
 
+  videoElement.addEventListener('ended', () => {
+    if (playlistVideos.length > 1 && activeVideoIndex + 1 < playlistVideos.length) {
+      showToast(`▶ Playing Next (${activeVideoIndex + 2}/${playlistVideos.length})...`);
+      selectPlaylistVideo(activeVideoIndex + 1, true);
+    }
+  });
+
   function showError(heading, message) {
     loader.classList.add('hidden');
     errorHeading.textContent = heading;
@@ -1524,21 +1704,54 @@ document.addEventListener('DOMContentLoaded', () => {
     errorOverlay.style.display = 'flex';
   }
 
-  function setDownloadTargets(rawMediaUrl, title, allowWorkerDl = true) {
-    const cleanName = title && title !== 'TeraBox Video' ? title : 'TeravidsPlay_Video.mp4';
-    const teraboxPage = vId
-      ? `https://terabox.com/s/${encodeURIComponent(vId.startsWith('1') ? vId : '1' + vId)}`
-      : '#';
-    const dlHref = isSafeHttpUrl(rawMediaUrl)
-      ? (vId && allowWorkerDl ? `${WORKER_BASE}/dl/${encodeURIComponent(vId)}?fn=${encodeURIComponent(cleanName)}` : toProxyUrl(rawMediaUrl, { dl: true, filename: cleanName }))
-      : teraboxPage;
-
-    if (topDownloadBtn) topDownloadBtn.href = dlHref;
-    if (btnDownloadExt) btnDownloadExt.href = dlHref;
-    if (externalDownloadBtn) externalDownloadBtn.href = teraboxPage;
+  function configureDownloadButton(btn, dlHref, available) {
+    if (!btn) return;
+    if (available && dlHref) {
+      btn.href = dlHref;
+      btn.setAttribute('target', '_blank');
+      btn.setAttribute('rel', 'noopener noreferrer');
+      btn.dataset.unavailable = '0';
+    } else {
+      btn.href = '#download';
+      btn.removeAttribute('target');
+      btn.dataset.unavailable = '1';
+    }
   }
 
-  // 20. Extract String URL from Stream Field (dict or string)
+  [topDownloadBtn, btnDownloadExt].forEach((btn) => {
+    if (!btn) return;
+    btn.addEventListener('click', (e) => {
+      if (btn.dataset.unavailable === '1') {
+        e.preventDefault();
+        showToast('Direct download unavailable — streaming in HD on TeravidsPlay!');
+      }
+    });
+  });
+
+  // Strictly keeps all downloads & fallback targets within TeravidsPlay Worker/Telegram (never leaves to TeraBox/DiskWala)
+  function setDownloadTargets(rawMediaUrl, title, allowWorkerDl = true, idx = 0, fileId = '') {
+    const cleanName = title && title !== 'TeraBox Video' ? title : 'TeravidsPlay_Video.mp4';
+    const hasSafeMedia = isSafeHttpUrl(rawMediaUrl);
+    const activeToken = resolvedSurl || vId;
+    let dlHref = '';
+    if (hasSafeMedia) {
+      if (activeToken && allowWorkerDl) {
+        const dlParams = new URLSearchParams({ fn: cleanName });
+        if (idx > 0) dlParams.set('idx', String(idx));
+        if (fileId) dlParams.set('fid', fileId);
+        if (activeDirPath) dlParams.set('path', activeDirPath);
+        dlHref = `${WORKER_BASE}/dl/${encodeURIComponent(activeToken)}?${dlParams.toString()}`;
+      } else {
+        dlHref = toProxyUrl(rawMediaUrl, { dl: true, filename: cleanName });
+      }
+    }
+
+    configureDownloadButton(topDownloadBtn, dlHref, hasSafeMedia);
+    configureDownloadButton(btnDownloadExt, dlHref, hasSafeMedia);
+    if (externalChannelBtn) externalChannelBtn.href = 'https://t.me/teravidsplayer';
+  }
+
+  // 20. Extract String URL from Stream Field & Multi-Video Playlist Engine
   function extractStreamMapEntries(val) {
     const entries = [];
     if (typeof val === 'string' && isSafeHttpUrl(val)) {
@@ -1553,15 +1766,287 @@ document.addEventListener('DOMContentLoaded', () => {
     return entries;
   }
 
-  // 21. Video Resolver for TeraBox Short IDs (?v=... or ?url=...)
-  async function resolveAndPlay(targetIdOrUrl) {
+  function updatePlaylistActiveState() {
+    if (!playlistList) return;
+    const cards = playlistList.querySelectorAll('.playlist-card');
+    cards.forEach((btn, i) => {
+      const isCurr = i === activeVideoIndex;
+      if (isCurr) {
+        btn.setAttribute('aria-current', 'true');
+        btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } else {
+        btn.removeAttribute('aria-current');
+      }
+      const badge = btn.querySelector('.playlist-now-pill');
+      if (badge) badge.style.display = isCurr ? 'inline-block' : 'none';
+    });
+
+    if (playlistControlsRow && playlistVideos.length > 1) {
+      playlistControlsRow.style.display = 'flex';
+      if (playlistPositionLabel) {
+        playlistPositionLabel.textContent = `${activeVideoIndex + 1} / ${playlistVideos.length}`;
+      }
+      if (prevVideoBtn) {
+        prevVideoBtn.setAttribute('aria-disabled', activeVideoIndex <= 0 ? 'true' : 'false');
+      }
+      if (nextVideoBtn) {
+        nextVideoBtn.setAttribute('aria-disabled', activeVideoIndex + 1 >= playlistVideos.length ? 'true' : 'false');
+      }
+    }
+  }
+
+  function renderPlaylistSection(videos) {
+    if (!playlistSection || !playlistList) return;
+    playlistList.textContent = '';
+
+    if (!Array.isArray(videos) || videos.length <= 1) {
+      playlistSection.style.display = 'none';
+      if (playlistControlsRow) playlistControlsRow.style.display = 'none';
+      return;
+    }
+
+    const folderName = activeDirPath ? activeDirPath.split('/').filter(Boolean).pop() : '';
+    if (playlistHeading) {
+      playlistHeading.textContent = folderName ? `Collection: ${folderName}` : 'Playlist Videos';
+    }
+    if (playlistCountBadge) {
+      playlistCountBadge.textContent = `${videos.length} videos`;
+    }
+
+    videos.forEach((vid, i) => {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'playlist-card';
+      if (i === activeVideoIndex) btn.setAttribute('aria-current', 'true');
+
+      const thumbWrap = document.createElement('div');
+      thumbWrap.className = 'playlist-thumb-wrap';
+
+      if (vid.thumbnailUrl && isSafeHttpUrl(vid.thumbnailUrl)) {
+        const img = document.createElement('img');
+        img.width = 160;
+        img.height = 90;
+        img.loading = 'lazy';
+        img.setAttribute('fetchpriority', 'low');
+        img.alt = '';
+        const primaryThumb = shouldProxyUrl(vid.thumbnailUrl) ? toProxyUrl(vid.thumbnailUrl) : vid.thumbnailUrl;
+        const fallbackThumb = primaryThumb === vid.thumbnailUrl ? toProxyUrl(vid.thumbnailUrl) : vid.thumbnailUrl;
+        img.dataset.fallbackAttempted = '0';
+        img.onerror = () => {
+          if (img.dataset.fallbackAttempted === '0' && fallbackThumb && fallbackThumb !== img.src) {
+            img.dataset.fallbackAttempted = '1';
+            img.src = fallbackThumb;
+          } else {
+            img.style.display = 'none';
+          }
+        };
+        img.src = primaryThumb;
+        thumbWrap.appendChild(img);
+      }
+
+      const idxTag = document.createElement('span');
+      idxTag.className = 'playlist-index-tag';
+      idxTag.textContent = `#${i + 1}`;
+      thumbWrap.appendChild(idxTag);
+
+      if (vid.duration) {
+        const durTag = document.createElement('span');
+        durTag.className = 'playlist-duration-tag';
+        durTag.textContent = String(vid.duration);
+        thumbWrap.appendChild(durTag);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'playlist-card-meta';
+
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'playlist-card-title';
+      titleDiv.textContent = vid.title || `Video ${i + 1}`;
+
+      const badges = document.createElement('div');
+      badges.className = 'playlist-card-badges';
+
+      const nowPill = document.createElement('span');
+      nowPill.className = 'playlist-now-pill';
+      nowPill.textContent = '▶ Playing';
+      nowPill.style.display = i === activeVideoIndex ? 'inline-block' : 'none';
+      badges.appendChild(nowPill);
+
+      const szText = vid.size ? formatBytes(vid.size) : '';
+      if (szText) {
+        const szSpan = document.createElement('span');
+        szSpan.textContent = `📦 ${szText}`;
+        badges.appendChild(szSpan);
+      }
+      if (vid.quality) {
+        const qSpan = document.createElement('span');
+        qSpan.textContent = String(vid.quality);
+        badges.appendChild(qSpan);
+      }
+
+      meta.appendChild(titleDiv);
+      meta.appendChild(badges);
+      btn.appendChild(thumbWrap);
+      btn.appendChild(meta);
+      btn.addEventListener('click', () => {
+        if (i !== activeVideoIndex) {
+          selectPlaylistVideo(i, true);
+        }
+      });
+
+      li.appendChild(btn);
+      playlistList.appendChild(li);
+    });
+
+    playlistSection.style.display = 'block';
+    updatePlaylistActiveState();
+  }
+
+  function selectPlaylistVideo(index, autoPlayNow = isChannelUnlocked, triggerDlCheck = false) {
+    if (!Array.isArray(playlistVideos) || playlistVideos.length === 0) return;
+    const clampedIdx = Math.max(0, Math.min(index, playlistVideos.length - 1));
+    activeVideoIndex = clampedIdx;
+    const vid = playlistVideos[clampedIdx];
+    activeFileId = String(vid.fileId || vid._id || '');
+
+    hasRenderedVideoFrame = false;
+    resetScrubberUi();
+    errorOverlay.style.display = 'none';
+    if (videoPosterOverlay) videoPosterOverlay.style.display = 'none';
+
+    const title = vid.title || cleanTitle || 'TeraBox Video';
+    const sizeFormatted = vid.size ? formatBytes(vid.size) : (playlistVideos.length === 1 ? cleanSize : '');
+
+    topVideoTitle.textContent = playlistVideos.length > 1 ? `[${clampedIdx + 1}/${playlistVideos.length}] ${title}` : title;
+    videoTitleElem.textContent = title;
+    document.title = `${title} — TeravidsPlay`;
+
+    if (sizeFormatted) {
+      fileSizeElem.textContent = `📦 ${sizeFormatted}`;
+      fileSizeElem.style.display = 'inline';
+    } else {
+      fileSizeElem.style.display = 'none';
+    }
+
+    const thumb = vid.thumbnailUrl || (clampedIdx === 0 ? cleanThumb : '');
+    if (thumb) setVideoPoster(thumb);
+
+    try {
+      const nextUrl = new URL(window.location.href);
+      if (playlistVideos.length > 1) {
+        nextUrl.searchParams.set('idx', String(clampedIdx));
+      }
+      window.history.replaceState(null, '', nextUrl.toString());
+    } catch (e) {}
+
+    updatePlaylistActiveState();
+
+    const hlsEntries = [
+      ...extractStreamMapEntries(vid.fast_stream_url),
+      ...extractStreamMapEntries(vid.hls_url),
+    ];
+    const priorityOrder = ['1080p', '720p', '480p', '360p', 'Auto'];
+    hlsEntries.sort((a, b) => {
+      const ia = priorityOrder.indexOf(a.label);
+      const ib = priorityOrder.indexOf(b.label);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+
+    const rawMp4 = vid.original_quality_url || vid.stream_url || vid.mp4_url_fast || vid.mp4_url_slow || '';
+    const mp4Url = isSafeHttpUrl(rawMp4) ? rawMp4 : '';
+    const qualityList = [];
+    const seenQ = new Set();
+    for (const e of hlsEntries) {
+      if (!seenQ.has(e.label)) {
+        seenQ.add(e.label);
+        qualityList.push({ id: `q-${e.label}`, label: e.label, url: e.url });
+      }
+    }
+    if (mp4Url) {
+      qualityList.push({ id: 'q-mp4', label: 'Original MP4', url: mp4Url });
+    }
+
+    availableQualities = qualityList;
+    const primaryOpt = qualityList[0];
+    activeQualityId = primaryOpt ? primaryOpt.id : 'auto';
+    renderQualityOptions(availableQualities, activeQualityId);
+
+    setDownloadTargets(mp4Url, title, Boolean(mp4Url), clampedIdx, activeFileId);
+
+    const hasPlayableHls = hlsEntries.length > 0;
+    if (triggerDlCheck) {
+      if (urlParams.get('nodl') === '1' && !mp4Url && hasPlayableHls) {
+        showToast('Direct MP4 unavailable — streaming in HD!');
+      } else if (urlParams.get('dl') === '1' && mp4Url) {
+        const dlTarget = toProxyUrl(mp4Url, { dl: true, filename: title });
+        const a = document.createElement('a');
+        a.href = dlTarget;
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast('🚀 Fast Download Started!');
+      }
+    }
+
+    // Build ordered multi-tier playback queue: HLS (proxied if blocked) -> MP4 (proxied + direct)
+    const allCandidates = [];
+    for (const e of hlsEntries.slice(0, 2)) {
+      if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        allCandidates.push(...buildCandidatesForSingleUrl(e.url));
+      }
+    }
+    if (mp4Url) {
+      allCandidates.push(...buildCandidatesForSingleUrl(mp4Url));
+    }
+    // Native HLS Safari fallback if Hls.js isn't supported
+    if (allCandidates.length === 0 && hlsEntries[0]?.url) {
+      allCandidates.push(...buildCandidatesForSingleUrl(hlsEntries[0].url));
+    }
+
+    if (allCandidates.length === 0) {
+      showError(
+        'Stream Temporarily Unavailable',
+        'Streaming servers are busy right now. Tap Try Again below or explore @teravidsplayer.'
+      );
+      return;
+    }
+
+    startCandidateQueue(allCandidates, 0, autoPlayNow);
+  }
+
+  if (prevVideoBtn) {
+    prevVideoBtn.addEventListener('click', () => {
+      if (prevVideoBtn.getAttribute('aria-disabled') === 'true') return;
+      if (activeVideoIndex > 0) selectPlaylistVideo(activeVideoIndex - 1, true);
+    });
+  }
+
+  if (nextVideoBtn) {
+    nextVideoBtn.addEventListener('click', () => {
+      if (nextVideoBtn.getAttribute('aria-disabled') === 'true') return;
+      if (activeVideoIndex + 1 < playlistVideos.length) selectPlaylistVideo(activeVideoIndex + 1, true);
+    });
+  }
+
+  // 21. Video Resolver for TeraBox Short IDs, Folders & Supported Links (?v=... or ?url=...)
+  async function resolveAndPlay(targetIdOrUrl, bypassCache = false) {
     hasRenderedVideoFrame = false;
     loader.classList.remove('hidden');
     loaderText.textContent = 'Resolving video details...';
     errorOverlay.style.display = 'none';
 
     try {
-      const workerEndpoint = `${WORKER_BASE}/api/resolve?surl=${encodeURIComponent(targetIdOrUrl)}`;
+      const resolveParams = new URLSearchParams({ surl: targetIdOrUrl });
+      if (rawPathParam && !/path=/i.test(targetIdOrUrl)) {
+        resolveParams.set('path', rawPathParam);
+      }
+      if (bypassCache) {
+        resolveParams.set('fresh', '1');
+      }
+
+      const workerEndpoint = `${WORKER_BASE}/api/resolve?${resolveParams.toString()}`;
       const res = await fetch(workerEndpoint).catch(() => null);
       let data = null;
       if (res) {
@@ -1570,93 +2055,49 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {}
       }
 
-      if (data && data.success && Array.isArray(data.videos) && data.videos.length > 0) {
-        const vid = data.videos[0];
-        const title = vid.title || cleanTitle || 'TeraBox Video';
-        const sizeFormatted = vid.size ? formatBytes(vid.size) : cleanSize;
+      if (data && data.surl) {
+        const canonical = normalizeSurlToken(String(data.surl));
+        if (canonical) resolvedSurl = canonical;
+      }
 
-        topVideoTitle.textContent = title;
-        videoTitleElem.textContent = title;
-        document.title = `${title} — TeravidsPlay`;
-
-        if (sizeFormatted) {
-          fileSizeElem.textContent = `📦 ${sizeFormatted}`;
+      if (data?.requires_auth_api) {
+        const pm = data.partial_metadata || {};
+        if (pm.title) {
+          topVideoTitle.textContent = pm.title;
+          videoTitleElem.textContent = pm.title;
+          document.title = `${pm.title} — TeravidsPlay`;
+        }
+        if (pm.size) {
+          fileSizeElem.textContent = `📦 ${formatBytes(pm.size)}`;
           fileSizeElem.style.display = 'inline';
         }
-
-        const thumb = vid.thumbnailUrl || cleanThumb;
-        if (thumb) setVideoPoster(thumb);
-
-        const hlsEntries = [
-          ...extractStreamMapEntries(vid.fast_stream_url),
-          ...extractStreamMapEntries(vid.hls_url),
-        ];
-        const priorityOrder = ['1080p', '720p', '480p', '360p', 'Auto'];
-        hlsEntries.sort((a, b) => {
-          const ia = priorityOrder.indexOf(a.label);
-          const ib = priorityOrder.indexOf(b.label);
-          return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-        });
-
-        const rawMp4 = vid.original_quality_url || vid.stream_url || vid.mp4_url_fast || vid.mp4_url_slow || '';
-        const mp4Url = isSafeHttpUrl(rawMp4) ? rawMp4 : '';
-        const qualityList = [];
-        const seenQ = new Set();
-        for (const e of hlsEntries) {
-          if (!seenQ.has(e.label)) {
-            seenQ.add(e.label);
-            qualityList.push({ id: `q-${e.label}`, label: e.label, url: e.url });
-          }
+        if (pm.thumbnailUrl) {
+          setVideoPoster(pm.thumbnailUrl);
         }
-        if (mp4Url) {
-          qualityList.push({ id: 'q-mp4', label: 'Original MP4', url: mp4Url });
-        }
+        setDownloadTargets('', pm.title || 'TeravidsPlay_Video', false);
+        showError(
+          'DiskWala Auth Required',
+          'DiskWala restricts web streaming unless authenticated DiskWala API credentials are configured on the server.'
+        );
+        return;
+      }
 
-        availableQualities = qualityList;
-        const primaryOpt = qualityList[0];
-        activeQualityId = primaryOpt ? primaryOpt.id : 'auto';
-        renderQualityOptions(availableQualities, activeQualityId);
+      if (data && data.success && Array.isArray(data.videos) && data.videos.length > 0) {
+        playlistVideos = data.videos;
+        if (data.dirPath) activeDirPath = data.dirPath;
 
-        setDownloadTargets(mp4Url, title, Boolean(mp4Url));
-
-        const hasPlayableHls = hlsEntries.length > 0;
-        if (urlParams.get('nodl') === '1' && !mp4Url && hasPlayableHls) {
-          showToast('Direct MP4 unavailable — streaming in HD!');
-        } else if (urlParams.get('dl') === '1' && mp4Url) {
-          const dlTarget = toProxyUrl(mp4Url, { dl: true, filename: title });
-          const a = document.createElement('a');
-          a.href = dlTarget;
-          a.rel = 'noopener noreferrer';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          showToast('🚀 Fast Download Started!');
-        }
-
-        // Build ordered multi-tier playback queue: HLS (proxied if blocked) -> MP4 (proxied + direct)
-        const allCandidates = [];
-        for (const e of hlsEntries.slice(0, 2)) {
-          if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-            allCandidates.push(...buildCandidatesForSingleUrl(e.url));
-          }
-        }
-        if (mp4Url) {
-          allCandidates.push(...buildCandidatesForSingleUrl(mp4Url));
-        }
-        // Native HLS Safari fallback if Hls.js isn't supported
-        if (allCandidates.length === 0 && hlsEntries[0]?.url) {
-          allCandidates.push(...buildCandidatesForSingleUrl(hlsEntries[0].url));
-        }
-
-        if (allCandidates.length === 0) {
-          showError(
-            'Stream Temporarily Unavailable',
-            'TeraBox stream servers are busy or require verification right now. Tap Try Again or Open Directly below.'
+        let initialIdx = requestedIdx;
+        if (requestedFid) {
+          const matched = playlistVideos.findIndex(
+            (v) => v && (String(v.fileId || '') === requestedFid || String(v._id || '') === requestedFid)
           );
-          return;
+          if (matched >= 0) initialIdx = matched;
         }
+        initialIdx = Math.max(0, Math.min(initialIdx, playlistVideos.length - 1));
+        activeVideoIndex = initialIdx;
 
-        startCandidateQueue(allCandidates);
+        renderPlaylistSection(playlistVideos);
+        selectPlaylistVideo(initialIdx, isChannelUnlocked, true);
         return;
       }
 
@@ -1676,8 +2117,8 @@ document.addEventListener('DOMContentLoaded', () => {
           setVideoPoster(partial.thumbnailUrl);
         }
       }
-      setDownloadTargets('', partial?.title || cleanTitle || 'TeravidsPlay_Video');
-      showError('Video Unavailable', 'Could not resolve stream for this link. It may have expired, require login, or be blocked.');
+      setDownloadTargets('', partial?.title || cleanTitle || 'TeravidsPlay_Video', false);
+      showError('Video Unavailable', 'Could not resolve stream right now. Tap Try Again or check @teravidsplayer.');
     } catch (err) {
       showError('Connection Error', 'Failed to connect to streaming engine. Please try again.');
     }
@@ -1702,7 +2143,19 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function triggerShare() {
-    const shareUrl = vId ? `${window.location.origin}/v/${encodeURIComponent(vId)}` : window.location.href;
+    let shareUrl = window.location.href;
+    const shareToken = resolvedSurl || vId;
+    if (shareToken) {
+      const shareParams = new URLSearchParams({ v: shareToken, tg: '1' });
+      if (activeDirPath) shareParams.set('path', activeDirPath);
+      if (playlistVideos.length > 1) shareParams.set('idx', String(activeVideoIndex));
+      shareUrl = `${window.location.origin}/?${shareParams.toString()}`;
+    } else if (resolveInput) {
+      const shareParams = new URLSearchParams({ url: resolveInput, tg: '1' });
+      if (activeDirPath) shareParams.set('path', activeDirPath);
+      if (playlistVideos.length > 1) shareParams.set('idx', String(activeVideoIndex));
+      shareUrl = `${window.location.origin}/?${shareParams.toString()}`;
+    }
     if (navigator.share) {
       try {
         await navigator.share({ title: topVideoTitle.textContent || cleanTitle, url: shareUrl });
@@ -1728,7 +2181,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
-      if (resolveInput) resolveAndPlay(resolveInput);
+      if (resolveInput) resolveAndPlay(resolveInput, true);
       else if (streamUrl) loadStream(streamUrl, cleanThumb);
     });
   }

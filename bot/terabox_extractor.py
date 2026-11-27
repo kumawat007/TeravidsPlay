@@ -1,11 +1,11 @@
 """
-TeravidsPlay — High-Speed TeraBox Resolution Engine
-Zero Login / Zero Cookie Required.
+TeravidsPlay — High-Speed TeraBox & Cloud Media Resolution Engine
+Zero Login / Zero Cookie Required for public TeraBox shares & folders.
 Features:
-- Primary Engine: Cloudflare Edge Worker resolver with HLS + MP4 direct CDN stream links.
-- Secondary Engine: Direct iTeraPlay edge resolver with short-circuit protection.
-- Tertiary Engine: Direct terabox.app sharing/link + share/list scraper (supports folders & thumbnails).
-- Personal NDUS override (optional).
+- Primary Engine: Cloudflare Edge Worker resolver with Edge cache, HLS + MP4 CDN links, and folder paths.
+- Secondary Engine: Resilient direct iTeraPlay resolver (strictly rate-limit aware, never bursts).
+- Tertiary Engine: Direct 1024terabox / teraboxapp / terabox.app /share/list scraper (supports 20+ file folders, paths & thumbs).
+- DiskWala metadata integration via official udapi.diskwala.com (+ optional authenticated DISKWALA_API_URL).
 """
 
 import os
@@ -14,13 +14,12 @@ import time
 import logging
 import urllib.parse
 import ipaddress
-import concurrent.futures
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 import requests
 
 logger = logging.getLogger("TeravidsPlayBot")
 
-# Strictly allowed TeraBox domain suffixes (Strict Hostname Allowlist)
+# Strictly allowed TeraBox / DiskWala & CDN domain suffixes (Strict Hostname Allowlist)
 ALLOWED_TERABOX_HOSTS = {
     "terabox.com",
     "terabox.app",
@@ -48,11 +47,24 @@ ALLOWED_TERABOX_HOSTS = {
     "terabox.club",
     "teraboxdl.com",
     "terabox1.com",
+    "teraboxpage.com",
+    "1024terabox.app",
+    "teraboxfileshare.com",
+    "terashareus.com",
+    "1024tenbox.com",
+    "1024teradl.com",
+    "teraboxlinks.com",
+    "teraboxfast.com",
     "tibibox.com",
     "momerybox.com",
     "memorybox.com",
     "tribox.com",
     "dubox.com",
+    "diskwala.com",
+    "diskwala.net",
+    "diskwala-secure-dl.com",
+    "udapi.diskwala.com",
+    "tn1.diskwala.com",
     "bdydns.com",
     "baidu.com",
     "baidupcs.com",
@@ -60,6 +72,7 @@ ALLOWED_TERABOX_HOSTS = {
     "iteraplay.in",
     "iteraplay.com",
     "playterabox.com",
+    "cloudflarestorage.com",
     "replit.dev",
     "replit.app",
     "repl.co",
@@ -110,7 +123,7 @@ def _host_matches(host: str, domain_set: set) -> bool:
 def is_safe_hostname(host: str) -> bool:
     """
     SSRF Protection: Strictly validates that the host is NOT a private/loopback/cloud metadata IP,
-    and matches the explicit allowlist of TeraBox domains or trusted shorteners.
+    and matches the explicit allowlist of supported media domains or trusted shorteners.
     """
     if not host:
         return False
@@ -126,7 +139,7 @@ def is_safe_hostname(host: str) -> bool:
 
 
 def is_terabox_url(text: str) -> bool:
-    """Strictly checks if URL hostname belongs to recognized TeraBox domain or shortener."""
+    """Strictly checks if URL hostname belongs to recognized TeraBox/DiskWala domain or shortener."""
     if not text:
         return False
     try:
@@ -139,15 +152,75 @@ def is_terabox_url(text: str) -> bool:
         return False
 
 
-def extract_url(text: str) -> Optional[str]:
-    """Finds and cleanly extracts the first verified TeraBox/shortener HTTP(S) URL from text."""
-    if not text:
+def is_diskwala_url(url_str: str) -> bool:
+    if not url_str:
+        return False
+    try:
+        host = (urllib.parse.urlparse(url_str).hostname or "").lower()
+        return _host_matches(host, {"diskwala.com"})
+    except Exception:
+        return False
+
+
+def parse_diskwala_id(url_str: str) -> Optional[str]:
+    if not url_str:
         return None
-    for match in re.finditer(r"https?://[^\s<>\"']+", text):
-        url = match.group(0).rstrip(").,;:!?'\"")
-        if is_terabox_url(url):
-            return url
-    return None
+    m = re.search(r"/(?:app|share|v|d|f)/([a-fA-F0-9]{24})", url_str, re.I)
+    if m:
+        return m.group(1)
+    m2 = re.search(r"\b([a-fA-F0-9]{24})\b", url_str)
+    return m2.group(1) if m2 else None
+
+
+def extract_share_path(share_url: str) -> str:
+    """Extracts and decodes TeraBox folder path parameter (?path=... or ?dir=...)."""
+    if not share_url:
+        return ""
+    try:
+        parsed = urllib.parse.urlparse(share_url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        for key in ("path", "dir"):
+            if key in qs and qs[key]:
+                return qs[key][0].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def extract_all_urls(text: str) -> List[str]:
+    """Finds and deduplicates all verified TeraBox/DiskWala/shortener HTTP(S) URLs in exact text order."""
+    if not text:
+        return []
+    normalized = re.sub(r"[\u200b-\u200d\ufeff]+", "", text)
+    hits: List[Tuple[int, str]] = []
+    seen = set()
+
+    def _add(pos: int, raw: str):
+        cleaned = raw.strip().rstrip(").,;:!?'\"]}")
+        if not cleaned:
+            return
+        if not re.match(r"^https?://", cleaned, re.I):
+            cleaned = "https://" + cleaned
+        if cleaned not in seen and is_terabox_url(cleaned):
+            seen.add(cleaned)
+            hits.append((pos, cleaned))
+
+    for match in re.finditer(r"https?://[^\s<>\"']+", normalized):
+        _add(match.start(), match.group(0))
+
+    for match in re.finditer(r"(?:^|[\s(])((?:www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[^\s<>\"']+)", normalized):
+        token = match.group(1)
+        if not token.lower().startswith(("http://", "https://")):
+            _add(match.start(1), token)
+
+    hits.sort(key=lambda item: item[0])
+    return [u for _, u in hits]
+
+
+def extract_url(text: str) -> Optional[str]:
+    """Finds and cleanly extracts the first verified TeraBox/DiskWala/shortener HTTP(S) URL from text."""
+    urls = extract_all_urls(text)
+    return urls[0] if urls else None
 
 
 def format_bytes(size_bytes: int) -> str:
@@ -166,20 +239,6 @@ def format_bytes(size_bytes: int) -> str:
         return f"{size:.2f} PB"
     except (ValueError, TypeError):
         return "Unknown Size"
-
-
-def shorten_url(long_url: str) -> str:
-    """Shortens a long video URL using TinyURL API with fast fallback."""
-    if not long_url or len(long_url) < 60:
-        return long_url
-    try:
-        encoded = urllib.parse.quote(long_url, safe="")
-        resp = requests.get(f"https://tinyurl.com/api-create.php?url={encoded}", timeout=4)
-        if resp.status_code == 200 and resp.text.startswith("http"):
-            return resp.text.strip()
-    except Exception as e:
-        logger.debug(f"[TeraBoxExtractor] Shortener notice: {e}")
-    return long_url
 
 
 def _pick_first_hls_url(streams: Any) -> Optional[str]:
@@ -207,7 +266,9 @@ def _safe_int(value: Any, default: int = 0) -> int:
 
 def _parse_edge_video_payload(video: Dict[str, Any], source_name: str) -> Optional[Dict[str, Any]]:
     """Normalizes the JSON schema returned by Worker/iTeraPlay engines into TeravidsPlay format."""
-    title = video.get("title", "TeraBox Video")
+    if not isinstance(video, dict):
+        return None
+    title = video.get("title") or "TeraBox Video"
     size = _safe_int(video.get("size"))
     stream_url = (
         video.get("original_quality_url")
@@ -219,12 +280,15 @@ def _parse_edge_video_payload(video: Dict[str, Any], source_name: str) -> Option
 
     hls_url = _pick_first_hls_url(video.get("fast_stream_url")) or _pick_first_hls_url(video.get("hls_url"))
     thumb = video.get("thumbnailUrl") or video.get("thumbnail") or video.get("thumb")
-    quality = video.get("quality", "HD")
+    quality = video.get("quality") or "HD"
+    file_id = str(video.get("fileId") or video.get("_id") or "")
+    duration = str(video.get("duration") or "")
 
     has_real_name = bool(title and title not in ["TeraBox Video", "TeraBox Video Stream"])
     if stream_url or hls_url or has_real_name or thumb:
         return {
             "success": True,
+            "file_id": file_id,
             "title": title,
             "size_bytes": size,
             "size_formatted": format_bytes(size) if size > 0 else "HD Stream",
@@ -233,15 +297,16 @@ def _parse_edge_video_payload(video: Dict[str, Any], source_name: str) -> Option
             "hls_url": hls_url,
             "download_url": stream_url or "",
             "quality": quality,
+            "duration": duration,
             "source": source_name,
         }
     return None
 
 
-def _pick_best_list_item(items: list) -> Optional[Dict[str, Any]]:
-    """Selects the primary video item from a TeraBox file list, skipping folders/non-videos when possible."""
+def _map_share_list_videos(items: list, source_name: str = "TeraBox Metadata") -> List[Dict[str, Any]]:
+    """Maps all non-folder video items from a TeraBox share/list payload into normalized dicts."""
     if not items:
-        return None
+        return []
     videos = [
         it for it in items
         if str(it.get("isdir", "0")) != "1"
@@ -250,19 +315,42 @@ def _pick_best_list_item(items: list) -> Optional[Dict[str, Any]]:
             or (it.get("server_filename", "").lower().endswith(VIDEO_EXTENSIONS))
         )
     ]
-    if videos:
-        return max(videos, key=lambda x: int(x.get("size") or 0))
-    files = [it for it in items if str(it.get("isdir", "0")) != "1"]
-    return files[0] if files else items[0]
+    if not videos:
+        videos = [it for it in items if str(it.get("isdir", "0")) != "1"]
+
+    mapped = []
+    for item in videos:
+        filename = item.get("server_filename") or "TeraBox Video"
+        size = _safe_int(item.get("size"))
+        thumbs = item.get("thumbs") or {}
+        thumb = thumbs.get("url3") or thumbs.get("url2") or thumbs.get("url1") or thumbs.get("icon")
+        dlink = item.get("dlink") or ""
+        mapped.append({
+            "success": True,
+            "file_id": str(item.get("fs_id") or ""),
+            "title": filename,
+            "size_bytes": size,
+            "size_formatted": format_bytes(size) if size > 0 else "HD Stream",
+            "thumbnail": thumb,
+            "stream_url": dlink,
+            "hls_url": None,
+            "download_url": dlink,
+            "quality": "HD",
+            "duration": "",
+            "source": "TeraBox Direct Scraper" if dlink else source_name,
+        })
+    return mapped
 
 
 class TeraBoxExtractor:
     def __init__(self, ndus_cookie: Optional[str] = None, worker_url: Optional[str] = None):
         self.ndus_cookie = (ndus_cookie or os.getenv("NDUS_COOKIE", "")).strip()
         self.worker_url = (worker_url or os.getenv("WORKER_URL", "https://teravidsplay.proxyking.workers.dev")).rstrip("/")
+        self.diskwala_api_url = os.getenv("DISKWALA_API_URL", "").strip()
+        self.diskwala_api_key = os.getenv("DISKWALA_API_KEY", "").strip()
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
-        self.last_diagnostics = []
+        self.last_diagnostics: List[str] = []
         if self.ndus_cookie:
             for cookie_domain in (".terabox.com", ".terabox.app", ".1024terabox.com", ".1024tera.com", ".teraboxapp.com"):
                 self.session.cookies.set("ndus", self.ndus_cookie, domain=cookie_domain)
@@ -320,99 +408,199 @@ class TeraBoxExtractor:
 
     def parse_surl_pair(self, share_url: str) -> Tuple[Optional[str], str, str]:
         """
-        Returns (raw_token, share_token_with_1, short_token_for_surl_param) without stripping
-        legitimate leading '1' characters from hyphenated or query-based shorturl IDs.
+        Returns (raw_token, share_token_with_1, short_token_for_surl_param).
+        Properly strips leading '1' on 23+ char share IDs even when containing '-' or '_',
+        while preserving genuine 22-char query tokens starting with '1'.
         """
         raw = self.parse_surl(share_url)
         if not raw:
             return None, "", ""
 
         from_query = bool(re.search(r"[?&](?:surl|v|s)=", share_url)) and not re.search(r"/(?:s|v)/", share_url)
-        is_legacy = bool(re.match(r"^1[a-zA-Z0-9]{22,}$", raw) and "-" not in raw and "_" not in raw)
-        share_tok = raw if raw.startswith("1") else "1" + raw
-        short_tok = raw if from_query else (raw[1:] if is_legacy else raw)
+        has_added_one = raw.startswith("1") and len(raw) >= 23
+        share_tok = raw if has_added_one else ("1" + raw if (from_query or not raw.startswith("1")) else raw)
+        short_tok = raw[1:] if has_added_one else raw
         return raw, share_tok, short_tok
+
+    def resolve_diskwala(self, url_str: str) -> Dict[str, Any]:
+        """Resolves DiskWala /app/<id> metadata via official udapi.diskwala.com (and optional configured API)."""
+        file_id = parse_diskwala_id(url_str)
+        if not file_id:
+            return {"success": False, "platform": "diskwala", "message": "Invalid DiskWala link ID."}
+
+        if self.diskwala_api_url and self.diskwala_api_url.startswith("https://"):
+            try:
+                sep = "&" if "?" in self.diskwala_api_url else "?"
+                ep = f"{self.diskwala_api_url}{sep}url={urllib.parse.quote(url_str, safe='')}"
+                hdrs = dict(DEFAULT_HEADERS)
+                if self.diskwala_api_key:
+                    hdrs["Authorization"] = f"Bearer {self.diskwala_api_key}"
+                    hdrs["x-api-key"] = self.diskwala_api_key
+                r = requests.get(ep, headers=hdrs, timeout=10)
+                if r.status_code == 200:
+                    payload = r.json()
+                    items = payload if isinstance(payload, list) else (payload.get("videos") or ([payload["fileInfo"]] if payload.get("fileInfo") else []))
+                    vids = []
+                    for it in items:
+                        if isinstance(it, dict) and (it.get("stream_url") or it.get("download_url") or it.get("url")):
+                            stream_u = it.get("download_url") or it.get("url") or it.get("stream_url") or ""
+                            hls_u = it.get("stream_url") if str(it.get("stream_url", "")).endswith(".m3u8") else None
+                            sz = _safe_int(it.get("size"))
+                            vids.append({
+                                "success": True,
+                                "file_id": file_id,
+                                "title": it.get("file_name") or it.get("name") or it.get("title") or "DiskWala Video",
+                                "size_bytes": sz,
+                                "size_formatted": format_bytes(sz) if sz > 0 else "HD Stream",
+                                "thumbnail": it.get("thumbnailUrl") or it.get("thumbnail") or "",
+                                "stream_url": stream_u,
+                                "hls_url": hls_u,
+                                "download_url": stream_u,
+                                "quality": it.get("quality") or "HD",
+                                "duration": "",
+                                "source": "DiskWala API",
+                            })
+                    if vids:
+                        return {**vids[0], "platform": "diskwala", "surl": file_id, "videos": vids}
+            except Exception as e:
+                logger.warning(f"[TeraBoxExtractor] Configured DiskWala API notice: {e}")
+
+        try:
+            r = requests.post(
+                "https://udapi.diskwala.com/api/v1/file/temp_info",
+                json={"id": file_id},
+                headers={**DEFAULT_HEADERS, "Origin": "https://www.diskwala.com", "Referer": "https://www.diskwala.com/"},
+                timeout=6,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                fi = data.get("fileInfo") or {}
+                up = data.get("uploader") or {}
+                ext = str(fi.get("extension") or "mp4").upper()
+                sz = _safe_int(fi.get("size"))
+                return {
+                    "success": False,
+                    "platform": "diskwala",
+                    "surl": file_id,
+                    "requires_auth_api": True,
+                    "title": f"DiskWala {ext} Video",
+                    "size_bytes": sz,
+                    "size_formatted": format_bytes(sz) if sz > 0 else "Unknown Size",
+                    "thumbnail": up.get("p_p") or "",
+                    "uploader": up.get("name") or "",
+                    "message": "DiskWala playback requires DiskWala App authentication or DISKWALA_API_URL credentials.",
+                }
+        except Exception as e:
+            self.last_diagnostics.append(f"DiskWala temp_info error: {e}")
+
+        return {
+            "success": False,
+            "platform": "diskwala",
+            "surl": file_id,
+            "requires_auth_api": True,
+            "message": "DiskWala video could not be extracted without authenticated API access.",
+        }
 
     def resolve_via_worker_engine(self, surl_or_url: str) -> Optional[Dict[str, Any]]:
         """
         Primary Engine for Cloud & Datacenter Deployments (Render / Koyeb / VPS):
-        Queries the Cloudflare Edge Worker API with a generous timeout for cold imports.
+        Queries the Cloudflare Edge Worker API (preserving full folder URL/path) and parses ALL returned videos.
         """
         if not self.worker_url:
             self.last_diagnostics.append("Worker Engine skipped: worker_url is empty")
             return None
 
-        raw_token, share_token, _ = self.parse_surl_pair(surl_or_url)
-        # Prioritize 1024terabox mirror first so even un-updated workers resolve fast, with original URL fallback
-        targets = []
-        if share_token:
-            targets.append(f"https://1024terabox.com/s/{share_token}")
-        if surl_or_url.startswith("http") and surl_or_url not in targets:
-            targets.append(surl_or_url)
-        elif not targets:
-            targets.append(surl_or_url)
+        _, share_token, _ = self.parse_surl_pair(surl_or_url)
+        dir_path = extract_share_path(surl_or_url)
 
-        for idx, target in enumerate(targets):
-            t0 = time.time()
-            try:
-                endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(target, safe='')}"
-                logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker (attempt {idx+1}): {endpoint}")
-                resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=20)
-                elapsed = time.time() - t0
-                self.last_diagnostics.append(f"Worker attempt {idx+1} -> status {resp.status_code} ({elapsed:.1f}s)")
-                logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code} ({elapsed:.2f}s)")
+        if surl_or_url.startswith("http") and (dir_path or is_diskwala_url(surl_or_url)):
+            target = surl_or_url
+        elif share_token:
+            target = f"https://1024terabox.com/s/{share_token}"
+        else:
+            target = surl_or_url
 
-                data = {}
-                if resp.text:
-                    try:
-                        data = resp.json()
-                    except Exception:
-                        data = {}
+        t0 = time.time()
+        try:
+            endpoint = f"{self.worker_url}/api/resolve?surl={urllib.parse.quote(target, safe='')}"
+            logger.info(f"[TeraBoxExtractor] Resolving via Edge Worker: {endpoint}")
+            resp = requests.get(endpoint, headers={"User-Agent": DEFAULT_HEADERS["User-Agent"]}, timeout=18)
+            elapsed = time.time() - t0
+            self.last_diagnostics.append(f"Worker -> status {resp.status_code} ({elapsed:.1f}s)")
+            logger.info(f"[TeraBoxExtractor] Edge Worker HTTP status: {resp.status_code} ({elapsed:.2f}s)")
 
-                if resp.status_code == 200 and data.get("success") and data.get("videos"):
-                    parsed = _parse_edge_video_payload(data["videos"][0], "Cloudflare Edge Engine")
-                    if parsed:
-                        logger.info(f"[TeraBoxExtractor] Resolved via Worker: '{parsed['title']}' ({parsed['size_formatted']})")
-                        return parsed
+            data: Dict[str, Any] = {}
+            if resp.text:
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = {}
 
-                partial = data.get("partial_metadata")
-                if partial and (partial.get("title") or partial.get("thumbnailUrl")):
-                    title = partial.get("title", "TeraBox Video")
-                    size = _safe_int(partial.get("size"))
-                    thumb = partial.get("thumbnailUrl")
-                    logger.info(f"[TeraBoxExtractor] Resolved partial metadata via Worker: '{title}'")
+            if data.get("requires_auth_api"):
+                pm = data.get("partial_metadata") or {}
+                sz = _safe_int(pm.get("size"))
+                return {
+                    "success": False,
+                    "platform": data.get("platform", "diskwala"),
+                    "surl": data.get("diskwala_id") or data.get("surl") or "",
+                    "requires_auth_api": True,
+                    "title": pm.get("title") or "DiskWala Video",
+                    "size_bytes": sz,
+                    "size_formatted": format_bytes(sz) if sz > 0 else "Unknown Size",
+                    "thumbnail": pm.get("thumbnailUrl") or "",
+                    "message": data.get("message") or "Authenticated API required for DiskWala.",
+                }
+
+            if resp.status_code == 200 and data.get("success") and data.get("videos"):
+                parsed_videos = [
+                    pv for pv in (_parse_edge_video_payload(v, "Cloudflare Edge Engine") for v in data["videos"])
+                    if pv
+                ]
+                if parsed_videos:
+                    lead = parsed_videos[0]
+                    logger.info(
+                        f"[TeraBoxExtractor] Resolved via Worker: {len(parsed_videos)} item(s), "
+                        f"lead='{lead['title']}' ({lead['size_formatted']})"
+                    )
                     return {
-                        "success": True,
-                        "title": title,
-                        "size_bytes": size,
-                        "size_formatted": format_bytes(size) if size > 0 else "1080p HD",
-                        "thumbnail": thumb,
-                        "stream_url": "",
-                        "hls_url": None,
-                        "download_url": "",
-                        "quality": "HD 1080p",
-                        "source": "Cloudflare Edge Engine (Metadata)",
+                        **lead,
+                        "surl": data.get("surl") or share_token,
+                        "dir_path": data.get("dirPath") or dir_path,
+                        "videos": parsed_videos,
                     }
 
-                debug_summary = data.get("debug") or data.get("message") or resp.text[:180]
-                if debug_summary:
-                    logger.info(f"[TeraBoxExtractor] Worker non-200 detail (attempt {idx+1}): {str(debug_summary)[:240]}")
+            partial = data.get("partial_metadata")
+            if partial and (partial.get("title") or partial.get("thumbnailUrl")):
+                title = partial.get("title", "TeraBox Video")
+                size = _safe_int(partial.get("size"))
+                thumb = partial.get("thumbnailUrl")
+                logger.info(f"[TeraBoxExtractor] Resolved partial metadata via Worker: '{title}'")
+                item = {
+                    "success": True,
+                    "file_id": "",
+                    "title": title,
+                    "size_bytes": size,
+                    "size_formatted": format_bytes(size) if size > 0 else "HD Stream",
+                    "thumbnail": thumb,
+                    "stream_url": "",
+                    "hls_url": None,
+                    "download_url": "",
+                    "quality": "HD",
+                    "duration": "",
+                    "source": "Cloudflare Edge Engine (Metadata)",
+                }
+                return {**item, "surl": share_token, "dir_path": dir_path, "videos": [item]}
 
-                # Only retry a second Worker target if the first failed fast (<6s)
-                if elapsed >= 6.0:
-                    break
-
-            except Exception as e:
-                err_msg = f"Worker notice (attempt {idx+1}): {type(e).__name__}: {e}"
-                self.last_diagnostics.append(err_msg)
-                logger.info(f"[TeraBoxExtractor] {err_msg} -> Falling back to HighSpeed Engine")
-                break
+        except Exception as e:
+            err_msg = f"Worker notice: {type(e).__name__}: {e}"
+            self.last_diagnostics.append(err_msg)
+            logger.info(f"[TeraBoxExtractor] {err_msg} -> Falling back cleanly")
 
         return None
 
     def resolve_via_highspeed_engine(self, share_url: str) -> Tuple[Optional[Dict[str, Any]], bool]:
         """
-        Secondary Engine: Queries iTeraPlay edge resolver directly.
+        Secondary Engine: Queries iTeraPlay edge resolver safely (single-shot, returns all folder videos).
         Returns (result_dict_or_None, should_short_circuit_remaining_candidates).
         """
         try:
@@ -426,134 +614,134 @@ class TeraBoxExtractor:
                 "https://iteraplay.in/api/videos/import",
                 json={"url": share_url},
                 headers=headers,
-                timeout=12,
+                timeout=10,
             )
-            if resp.status_code in (403, 429):
+            if resp.status_code in (403, 429) or "rate limit" in (resp.text or "").lower():
                 self.last_diagnostics.append(f"iTeraPlay HTTP {resp.status_code} ({share_url})")
-                logger.info(f"[TeraBoxExtractor] HighSpeed Engine HTTP {resp.status_code} for {share_url}")
+                logger.info(f"[TeraBoxExtractor] HighSpeed Engine rate-limited ({resp.status_code}) for {share_url}")
                 return None, True
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("success") and data.get("videos"):
-                    parsed = _parse_edge_video_payload(data["videos"][0], "HighSpeed Edge Engine")
-                    if parsed:
-                        return parsed, False
+                    parsed_videos = [
+                        pv for pv in (_parse_edge_video_payload(v, "HighSpeed Edge Engine") for v in data["videos"])
+                        if pv
+                    ]
+                    if parsed_videos:
+                        return {**parsed_videos[0], "videos": parsed_videos}, False
                 status = data.get("status", "")
                 if status in ("captcha_required", "rate_limited"):
                     self.last_diagnostics.append(f"iTeraPlay status: {status}")
-                    logger.info(f"[TeraBoxExtractor] HighSpeed Engine status: {status}")
                     return None, True
             else:
                 self.last_diagnostics.append(f"iTeraPlay HTTP {resp.status_code} ({share_url})")
-                logger.info(f"[TeraBoxExtractor] HighSpeed Engine HTTP {resp.status_code} for {share_url}: {resp.text[:120]}")
         except Exception as e:
             self.last_diagnostics.append(f"iTeraPlay err ({share_url}): {type(e).__name__}")
             logger.warning(f"[TeraBoxExtractor] HighSpeed Engine notice: {e}")
         return None, False
 
-    def resolve_via_direct_scraper(self, short_token: str) -> Optional[Dict[str, Any]]:
+    def resolve_via_direct_scraper(self, short_token: str, dir_path: str = "") -> Optional[Dict[str, Any]]:
         """
-        Tertiary Fallback: Scrapes terabox.app directly for real metadata, thumbnails, and optional dlink.
-        Handles nested folders (1 level) and filters for playable video items.
+        Tertiary Fallback: Queries verified working TeraBox mirrors (1024terabox.com first, then teraboxapp.com / terabox.app)
+        via /share/list supporting folders, dir_path, and all 20+ video thumbnails & sizes.
         """
         if not short_token:
             return None
-        try:
-            page_url = f"https://www.terabox.app/sharing/link?surl={urllib.parse.quote(short_token, safe='')}"
-            resp = self.session.get(page_url, timeout=6)
-            if resp.status_code != 200:
-                self.last_diagnostics.append(f"Direct scraper HTTP {resp.status_code}")
-                logger.info(f"[TeraBoxExtractor] Direct scraper HTTP {resp.status_code} on sharing/link")
-                return None
-            html_body = resp.text
 
-            js_token = None
-            m_enc = re.search(r'fn%28%22([^%"]+)%22%29', html_body)
-            m_plain = re.search(r'fn\("([^"]+)"\)', html_body)
-            if m_enc:
-                js_token = m_enc.group(1)
-            elif m_plain:
-                js_token = m_plain.group(1)
+        hosts_to_try = ["1024terabox.com", "teraboxapp.com", "teraboxlink.com", "www.terabox.app"]
+        for host in hosts_to_try:
+            try:
+                referer_url = f"https://{host}/"
+                js_token = None
+                log_id = None
 
-            log_id = None
-            m_log = re.search(r"dp-logid=([^&\"'\s]+)", html_body + resp.url)
-            if m_log:
-                log_id = m_log.group(1)
+                with requests.Session() as sess:
+                    sess.headers.update(DEFAULT_HEADERS)
+                    if self.ndus_cookie:
+                        sess.cookies.set("ndus", self.ndus_cookie, domain=f".{host}")
+                        sess.cookies.set("lang", "en", domain=f".{host}")
 
-            def fetch_list(dir_path: str = "") -> Optional[Dict[str, Any]]:
-                params = {
-                    "app_id": "250528",
-                    "web": "1",
-                    "channel": "dubox",
-                    "clienttype": "0",
-                    "page": "1",
-                    "num": "50",
-                    "order": "time",
-                    "desc": "1",
-                    "site_referer": resp.url,
-                    "shorturl": short_token,
-                    "root": "0" if dir_path else "1",
-                }
-                if dir_path:
-                    params["dir"] = dir_path
-                if js_token:
-                    params["jsToken"] = js_token
-                if log_id:
-                    params["dplogid"] = log_id
+                    if host == "www.terabox.app":
+                        page_url = f"https://{host}/sharing/link?surl={urllib.parse.quote(short_token, safe='')}"
+                        target_page = (
+                            f"{self.worker_url}/?url={urllib.parse.quote(page_url, safe='')}"
+                            if self.worker_url
+                            else page_url
+                        )
+                        resp = sess.get(target_page, timeout=6)
+                        if resp.status_code != 200:
+                            continue
+                        referer_url = page_url
+                        html_body = resp.text
+                        m_enc = re.search(r'fn%28%22([^%"]+)%22%29', html_body)
+                        m_plain = re.search(r'fn\("([^"]+)"\)', html_body)
+                        js_token = m_enc.group(1) if m_enc else (m_plain.group(1) if m_plain else None)
+                        m_log = re.search(r"dp-logid=([^&\"'\s]+)", html_body + resp.url)
+                        log_id = m_log.group(1) if m_log else None
 
-                list_resp = self.session.get(
-                    "https://www.terabox.app/share/list",
-                    params=params,
-                    headers={"Referer": resp.url},
-                    timeout=10,
-                )
-                if list_resp.status_code == 200:
-                    return list_resp.json()
-                return None
+                    def fetch_list(path_arg: str = "") -> Optional[Dict[str, Any]]:
+                        params = {
+                            "app_id": "250528",
+                            "web": "1",
+                            "channel": "dubox",
+                            "clienttype": "0",
+                            "page": "1",
+                            "num": "100",
+                            "order": "time",
+                            "desc": "1",
+                            "shorturl": short_token,
+                            "root": "0" if path_arg else "1",
+                        }
+                        if path_arg:
+                            params["dir"] = path_arg
+                        if js_token:
+                            params["jsToken"] = js_token
+                        if log_id:
+                            params["dplogid"] = log_id
 
-            data = fetch_list()
-            if not data or not data.get("list"):
-                errno = (data or {}).get("errno")
-                self.last_diagnostics.append(f"Direct scraper share/list empty (errno={errno})")
-                logger.info(f"[TeraBoxExtractor] Direct scraper share/list empty (errno={errno})")
-                return None
+                        raw_list_url = f"https://{host}/share/list?{urllib.parse.urlencode(params)}"
+                        urls_to_try = []
+                        if self.worker_url:
+                            urls_to_try.append((f"{self.worker_url}/?url={urllib.parse.quote(raw_list_url, safe='')}", {"User-Agent": DEFAULT_HEADERS["User-Agent"]}))
+                        urls_to_try.append((raw_list_url, {"Referer": referer_url}))
 
-            item = _pick_best_list_item(data["list"])
-            if item and str(item.get("isdir", "0")) == "1" and item.get("path"):
-                sub_data = fetch_list(item["path"])
-                if sub_data and sub_data.get("list"):
-                    sub_item = _pick_best_list_item(sub_data["list"])
-                    if sub_item and str(sub_item.get("isdir", "0")) != "1":
-                        item = sub_item
+                        for req_u, req_hdrs in urls_to_try:
+                            try:
+                                list_resp = sess.get(req_u, headers=req_hdrs, timeout=8)
+                                if list_resp.status_code == 200:
+                                    parsed_json = list_resp.json()
+                                    errno_val = parsed_json.get("errno")
+                                    if errno_val is not None and int(errno_val) == 0:
+                                        return parsed_json
+                            except Exception:
+                                continue
+                        return None
 
-            if not item:
-                return None
+                    data = fetch_list(dir_path)
+                    data_errno = data.get("errno") if isinstance(data, dict) else None
+                    if not data or data_errno is None or int(data_errno) != 0 or not data.get("list"):
+                        self.last_diagnostics.append(f"{host} share/list empty (errno={data_errno})")
+                        continue
 
-            filename = item.get("server_filename", "TeraBox Video")
-            size = int(item.get("size") or 0)
-            thumbs = item.get("thumbs") or {}
-            thumb = thumbs.get("url3") or thumbs.get("url2") or thumbs.get("url1") or thumbs.get("icon")
-            dlink = item.get("dlink") or ""
+                    raw_list = data["list"]
+                    videos = _map_share_list_videos(raw_list, "TeraBox Metadata")
+                    if not videos:
+                        folder_item = next((it for it in raw_list if str(it.get("isdir", "0")) == "1" and it.get("path")), None)
+                        if folder_item:
+                            sub_data = fetch_list(folder_item["path"])
+                            sub_errno = sub_data.get("errno") if isinstance(sub_data, dict) else None
+                            if sub_data and sub_errno is not None and int(sub_errno) == 0 and sub_data.get("list"):
+                                videos = _map_share_list_videos(sub_data["list"], "TeraBox Metadata")
 
-            return {
-                "success": True,
-                "title": filename,
-                "size_bytes": size,
-                "size_formatted": format_bytes(size),
-                "thumbnail": thumb,
-                "stream_url": dlink,
-                "hls_url": None,
-                "download_url": dlink,
-                "quality": "HD 1080p",
-                "source": "TeraBox Direct Scraper" if dlink else "TeraBox Metadata Scraper",
-            }
-        except Exception as e:
-            logger.warning(f"[TeraBoxExtractor] Direct scraper exception: {e}")
+                    if videos:
+                        return {**videos[0], "videos": videos, "dir_path": dir_path}
+            except Exception as e:
+                logger.warning(f"[TeraBoxExtractor] Direct scraper ({host}) notice: {e}")
         return None
 
     def get_video_stream(self, share_url: str) -> Dict[str, Any]:
         """
-        Main orchestrator: Resolves any TeraBox share URL into metadata & streamable direct links.
+        Main orchestrator: Resolves any TeraBox/DiskWala link (or multi-video folder) into metadata & streamable links.
         Guarded with strict SSRF protection and domain allowlisting.
         """
         self.last_diagnostics = []
@@ -567,104 +755,78 @@ class TeraBoxExtractor:
                 "diagnostics": ["URL failed strict hostname allowlist"],
             }
 
-        # Step 1: Resolve shortened URLs safely across redirects
         clean_url = self._expand_short_url(share_url)
+
+        # Route DiskWala URLs cleanly through Worker or direct metadata check
+        if is_diskwala_url(clean_url) or is_diskwala_url(share_url):
+            dw_target = clean_url if is_diskwala_url(clean_url) else share_url
+            worker_dw = self.resolve_via_worker_engine(dw_target)
+            if worker_dw and (worker_dw.get("success") or worker_dw.get("requires_auth_api")):
+                return worker_dw
+            return self.resolve_diskwala(dw_target)
+
         raw_token, share_token, short_token = self.parse_surl_pair(clean_url)
         if not raw_token:
             raw_token, share_token, short_token = self.parse_surl_pair(share_url)
+        dir_path = extract_share_path(clean_url) or extract_share_path(share_url)
 
         surl_masked = f"{raw_token[:3]}***{raw_token[-3:]}" if raw_token and len(raw_token) > 6 else "***"
-        logger.info(f"[TeraBoxExtractor] Processing safe surl token: {surl_masked}")
+        logger.info(f"[TeraBoxExtractor] Processing safe surl token: {surl_masked} (dir={bool(dir_path)})")
 
-        # Build deduplicated candidate list prioritizing fastest working mirrors + canonical URL
-        candidates = []
-        if share_token:
-            candidates.append(f"https://1024terabox.com/s/{share_token}")
-            candidates.append(f"https://terabox.com/s/{share_token}")
-        if is_terabox_url(clean_url) and clean_url not in candidates and not _host_matches(
-            (urllib.parse.urlparse(clean_url).hostname or "").lower(), ALLOWED_SHORTENERS
-        ):
-            candidates.append(clean_url)
-
-        if share_token:
-            for c in (
-                f"https://www.terabox.app/sharing/link?surl={short_token}",
-                f"https://teraboxapp.com/s/{share_token}",
-            ):
-                if c not in candidates:
-                    candidates.append(c)
-        if share_url not in candidates:
-            candidates.append(share_url)
-
-        partial_meta = None
-
-        def _finalize_result(res_dict: Dict[str, Any]) -> Dict[str, Any]:
-            res_dict["surl"] = share_token or raw_token
-            if not res_dict.get("thumbnail") and short_token:
-                direct_meta = self.resolve_via_direct_scraper(short_token)
-                if direct_meta and direct_meta.get("thumbnail"):
-                    res_dict["thumbnail"] = direct_meta["thumbnail"]
-            return res_dict
-
-        # Step 2: Primary Cloudflare Edge Worker Engine
+        worker_failed_hard = False
+        # Step 1: Primary Cloudflare Edge Worker Engine
         if share_token or clean_url:
-            worker_res = self.resolve_via_worker_engine(clean_url if clean_url.startswith("http") else share_token)
+            worker_input = clean_url if (clean_url.startswith("http") and dir_path) else (clean_url if clean_url.startswith("http") else share_token)
+            worker_res = self.resolve_via_worker_engine(worker_input)
             if worker_res and worker_res.get("success"):
-                return _finalize_result(worker_res)
-            if worker_res and worker_res.get("partial_metadata"):
-                partial_meta = worker_res["partial_metadata"]
+                worker_res["surl"] = worker_res.get("surl") or share_token or raw_token
+                worker_res["dir_path"] = worker_res.get("dir_path") or dir_path
+                return worker_res
+            worker_failed_hard = any("Worker notice:" in d or "status 5" in d for d in self.last_diagnostics)
 
-        # Step 3: Direct High-Speed Engine (parallel race on top 3 mirrors without waiting for losers)
-        primary_batch = candidates[:3]
-        short_circuit = False
-        if primary_batch:
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(primary_batch))
-            try:
-                future_map = {executor.submit(self.resolve_via_highspeed_engine, cand): cand for cand in primary_batch}
-                for fut in concurrent.futures.as_completed(future_map):
-                    res, stop_loop = fut.result()
-                    if res and res.get("success"):
-                        return _finalize_result(res)
-                    if stop_loop:
-                        short_circuit = True
-            finally:
-                executor.shutdown(wait=False, cancel_futures=True)
-
-        if not short_circuit:
-            for cand in candidates[3:]:
+        # Step 2: Direct High-Speed Engine (ONLY 1-2 sequential requests if Worker itself failed hard, avoids 429 bursts)
+        if worker_failed_hard:
+            candidates = []
+            if dir_path and clean_url.startswith("http"):
+                candidates.append(clean_url)
+            if share_token:
+                candidates.append(f"https://1024terabox.com/s/{share_token}")
+            for cand in candidates[:2]:
                 res, stop_loop = self.resolve_via_highspeed_engine(cand)
                 if res and res.get("success"):
-                    return _finalize_result(res)
+                    res["surl"] = share_token or raw_token
+                    res["dir_path"] = dir_path
+                    return res
                 if stop_loop:
                     break
 
-        # Step 4: Direct terabox.app Metadata/dlink Scraper
+        # Step 3: Direct 1024terabox.com/share/list Scraper (returns full folder file list + thumbnails + sizes)
         if short_token:
-            direct_res = self.resolve_via_direct_scraper(short_token)
+            direct_res = self.resolve_via_direct_scraper(short_token, dir_path)
             if direct_res and direct_res.get("success"):
                 direct_res["surl"] = share_token or raw_token
+                direct_res["dir_path"] = dir_path
                 return direct_res
 
-        # Step 5: Web Player Client Fallback (uses any partial metadata harvested from worker)
+        # Step 4: Honest failure result (no fake 1080p stream card when nothing resolved!)
         if share_token or raw_token:
             logger.warning(
-                f"[TeraBoxExtractor] Instant resolution via Web Player Client Engine for surl: {surl_masked}. "
-                f"Diagnostics: {self.last_diagnostics}"
+                f"[TeraBoxExtractor] Stream extraction unavailable for {surl_masked}. Diag: {self.last_diagnostics}"
             )
-            title = (partial_meta or {}).get("title") or "TeraBox Video Stream"
-            size_bytes = _safe_int((partial_meta or {}).get("size"))
-            thumb = (partial_meta or {}).get("thumbnailUrl")
             return {
                 "success": True,
+                "metadata_only": True,
                 "surl": share_token or raw_token,
-                "title": title,
-                "size_bytes": size_bytes,
-                "size_formatted": format_bytes(size_bytes) if size_bytes > 0 else "HD Stream",
-                "thumbnail": thumb,
+                "dir_path": dir_path,
+                "title": "TeraBox Video",
+                "size_bytes": 0,
+                "size_formatted": "HD Stream",
+                "thumbnail": None,
                 "stream_url": "",
                 "hls_url": None,
                 "download_url": "",
-                "quality": "HD 1080p",
+                "quality": "HD",
+                "videos": [],
                 "source": "Web Player Client Engine",
             }
 

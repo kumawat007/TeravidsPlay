@@ -1,10 +1,11 @@
 """
 TeravidsPlay — Production Telegram Channel Bot
 Optimized for Telegram Channels & Direct Messaging:
-- Multi-Engine Stream & Thumbnail Extraction with Cloudflare Worker Proxy fallback.
-- Explicit allowed_updates for Channel Posts, Edited Channel Posts, Messages & Callbacks.
-- Extracts verified TeraBox links even in multi-URL promo/captioned messages.
-- Mandatory Channel Force-Subscription (FSub) for private DMs.
+- Multi-Engine Stream & Thumbnail Extraction with Cloudflare Worker Proxy-first thumbnails.
+- Multi-Video Folder Playlist Support (Playlist summary + all individual video cards with real thumbnails/sizes).
+- Multi-URL Channel Post Extraction (never drops URLs #2..N when deleting raw posts).
+- Strict Channel Admin Guard for DM auto-publishing + Mandatory FSub for private DMs.
+- Honest DiskWala detection (metadata + auth requirement clarity, zero external site redirects).
 """
 
 import os
@@ -18,7 +19,9 @@ import html
 import logging
 import threading
 import urllib.parse
+import concurrent.futures
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Dict, Any, List, Optional, Tuple
 import requests
 from dotenv import load_dotenv
 import telebot
@@ -35,6 +38,10 @@ load_dotenv(dotenv_path)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PLAYER_URL = os.getenv("PLAYER_URL", "").rstrip("/")
 TARGET_CHANNEL_ID = os.getenv("TARGET_CHANNEL_ID", "").strip()
+ADMIN_USER_IDS = {
+    x.strip() for x in os.getenv("ADMIN_USER_IDS", "").split(",") if x.strip()
+}
+MAX_FOLDER_CARDS = max(1, int(os.getenv("MAX_FOLDER_CARDS", "25") or "25"))
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -46,9 +53,20 @@ if not BOT_TOKEN:
     print(f"\n[CRITICAL ERROR] BOT_TOKEN is missing in {dotenv_path}!\n")
     sys.exit(1)
 
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML", num_threads=6)
 
-from terabox_extractor import TeraBoxExtractor, is_terabox_url
+
+def _reply_or_send(message: types.Message, text: str, **kwargs):
+    """Replies to a message cleanly, falling back to send_message if the original message was deleted."""
+    try:
+        return bot.reply_to(message, text, **kwargs)
+    except telebot.apihelper.ApiTelegramException as e:
+        err_l = str(e).lower()
+        if "message to reply not found" in err_l or "reply message not found" in err_l or "message to be replied not found" in err_l:
+            return bot.send_message(message.chat.id, text, **kwargs)
+        raise
+
+from terabox_extractor import TeraBoxExtractor, is_terabox_url, extract_all_urls, format_bytes
 
 extractor = TeraBoxExtractor()
 
@@ -59,33 +77,45 @@ DEFAULT_UA = (
 )
 
 
-def extract_url_from_message(message: types.Message) -> str:
+def extract_urls_from_message(message: types.Message) -> List[str]:
     """
-    Extracts the first verified TeraBox or shortener URL from raw text, captions,
-    or Telegram formatted hyperlink entities (handles multi-URL messages cleanly).
+    Extracts ALL verified TeraBox/DiskWala/shortener URLs from raw text, captions,
+    or Telegram formatted hyperlink entities cleanly in order without duplicates.
     """
     text = message.text or message.caption or ""
-    candidates = [m.group(0).rstrip(").,;:!?'\"") for m in re.finditer(r"https?://[^\s<>\"']+", text)]
+    urls: List[str] = []
+    seen = set()
+
+    for u in extract_all_urls(text):
+        if u not in seen:
+            seen.add(u)
+            urls.append(u)
 
     entities = (message.entities or []) + (message.caption_entities or [])
     for ent in entities:
-        ent_url = getattr(ent, "url", None)
-        if ent_url:
-            candidates.append(ent_url.strip())
+        ent_url = (getattr(ent, "url", None) or "").strip()
+        if ent_url and ent_url not in seen and is_terabox_url(ent_url):
+            seen.add(ent_url)
+            urls.append(ent_url)
 
-    for cand in candidates:
-        if is_terabox_url(cand):
-            return cand
-
-    return candidates[0] if candidates else ""
+    return urls
 
 
-def extract_title_hint_from_message(message: types.Message, raw_url: str) -> str:
-    """Extracts custom video title or caption written by the user alongside the link."""
+def extract_url_from_message(message: types.Message) -> str:
+    """Backward-compatible single URL extractor returning the first verified URL."""
+    urls = extract_urls_from_message(message)
+    return urls[0] if urls else ""
+
+
+def extract_title_hint_from_message(message: types.Message, urls: List[str]) -> str:
+    """Extracts custom video title or caption written by the user alongside the link(s)."""
     text = (message.text or message.caption or "").strip()
     if not text:
         return ""
-    cleaned = text.replace(raw_url, "").strip()
+    cleaned = text
+    for u in urls:
+        cleaned = cleaned.replace(u, "")
+    cleaned = re.sub(r"https?://\S+", "", cleaned)
     cleaned = re.sub(r"[\r\n]+", " ", cleaned).strip()
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if len(cleaned) >= 3 and not cleaned.startswith("http"):
@@ -95,123 +125,206 @@ def extract_title_hint_from_message(message: types.Message, raw_url: str) -> str
 
 def _referer_for_url(target_url: str) -> str:
     lower = (target_url or "").lower()
-    if any(h in lower for h in ("replit.dev", "replit.app", "repl.co", "iteraplay")):
+    if any(h in lower for h in ("replit.dev", "replit.app", "repl.co", "iteraplay", "qzz.io")):
         return "https://iteraplay.in/"
+    if "1024terabox.com" in lower:
+        return "https://1024terabox.com/"
+    if "1024tera.com" in lower:
+        return "https://www.1024tera.com/"
     if "terabox.app" in lower:
         return "https://www.terabox.app/"
+    if "diskwala.com" in lower:
+        return "https://www.diskwala.com/"
     return "https://www.terabox.com/"
 
 
-def download_image_bytes(thumb_url: str, timeout: int = 8):
+def _detect_image_filename(content: bytes) -> Optional[str]:
+    """Detects real image extension from binary magic bytes; returns None if payload isn't a safe raster image."""
+    if not content or len(content) < 12:
+        return None
+    if content[:3] == b"\xff\xd8\xff":
+        return "preview.jpg"
+    if content[:8] == b"\x89PNG\r\n\x1a\n":
+        return "preview.png"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "preview.webp"
+    if content[:4] == b"GIF8":
+        return "preview.gif"
+    return None
+
+
+def download_image_bytes(thumb_url: str, timeout: int = 10) -> Optional[io.BytesIO]:
     """
-    Downloads image bytes using contextual headers so Telegram receives direct binary upload.
-    Routes blocked Replit/iTeraPlay CDN hosts through Cloudflare Worker proxy first for instant loading.
+    Downloads real thumbnail bytes with proxy-first routing for blocked/rate-limited hosts
+    (Replit/iTeraPlay/1024tera/TeraBox CDNs/DiskWala) so Telegram gets direct binary photo upload.
     """
     if not thumb_url or not thumb_url.startswith("http"):
         return None
 
-    attempts = []
-    is_blocked_host = any(h in thumb_url.lower() for h in ("replit.dev", "replit.app", "repl.co", "iteraplay", "qzz.io"))
+    lower = thumb_url.lower()
+    proxy_first_hosts = (
+        "replit.dev", "replit.app", "repl.co", "iteraplay", "qzz.io",
+        "1024terabox", "1024tera", "terabox", "dm-data", "diskwala", "bdydns", "baidupcs",
+    )
+    use_worker_first = any(h in lower for h in proxy_first_hosts)
+
+    attempts: List[Tuple[str, Dict[str, str], int]] = []
+    img_accept = "image/avif,image/webp,image/apng,image/jpeg,image/*,*/*;q=0.8"
 
     if extractor.worker_url and not thumb_url.startswith(extractor.worker_url):
         proxied = f"{extractor.worker_url}/?url={urllib.parse.quote(thumb_url, safe='')}"
-        if is_blocked_host:
-            attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}))
-            attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": "image/*,*/*;q=0.8"}))
+        if use_worker_first:
+            attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": img_accept}, timeout))
+            attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": img_accept}, 5))
         else:
-            attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}))
-            attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": "image/*,*/*;q=0.8"}))
+            attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": img_accept}, 5))
+            attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": img_accept}, timeout))
     else:
-        attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}))
+        attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": img_accept}, timeout))
 
-    for fetch_url, hdrs in attempts:
+    for fetch_url, hdrs, req_timeout in attempts:
         try:
-            curr_timeout = 4 if (not is_blocked_host and fetch_url == thumb_url) else timeout
-            resp = requests.get(fetch_url, headers=hdrs, timeout=curr_timeout)
+            resp = requests.get(fetch_url, headers=hdrs, timeout=req_timeout)
             ctype = (resp.headers.get("Content-Type") or "").lower()
-            if (
-                resp.status_code == 200
-                and 500 < len(resp.content) <= 8 * 1024 * 1024
-                and (not ctype or ("text/html" not in ctype and "svg" not in ctype))
-            ):
+            if resp.status_code == 200 and 500 < len(resp.content) <= 8 * 1024 * 1024:
+                if "text/html" in ctype or "svg" in ctype or "application/json" in ctype:
+                    continue
+                img_name = _detect_image_filename(resp.content)
+                if not img_name and not ctype.startswith("image/"):
+                    continue
                 bio = io.BytesIO(resp.content)
-                bio.name = "preview.jpg"
+                bio.name = img_name or "preview.jpg"
                 return bio
         except Exception as e:
-            logger.warning(f"Thumbnail fetch failed for {fetch_url[:80]}: {e}")
+            logger.debug(f"Thumbnail fetch notice for {fetch_url[:80]}: {e}")
     return None
 
 
-def build_channel_markup(stream_url: str, title: str, size: str, surl: str = "", thumb: str = "") -> tuple[types.InlineKeyboardMarkup, str]:
-    """Builds direct-to-player inline buttons with permanent non-expiring URLs."""
+def build_channel_markup(
+    stream_url: str,
+    title: str,
+    size: str,
+    surl: str = "",
+    thumb: str = "",
+    dir_path: str = "",
+    idx: Optional[int] = None,
+    file_id: str = "",
+    playlist_count: int = 1,
+    is_summary: bool = False,
+) -> tuple[types.InlineKeyboardMarkup, str]:
+    """Builds direct-to-player inline buttons strictly keeping users on TeravidsPlay & Telegram."""
     markup = types.InlineKeyboardMarkup(row_width=1)
 
-    encoded_title = urllib.parse.quote(title) if title else ""
-    encoded_size = urllib.parse.quote(size) if size else ""
-    encoded_thumb = urllib.parse.quote(thumb) if (thumb and thumb.startswith("http")) else ""
-
     if PLAYER_URL and surl:
-        player_link = f"{PLAYER_URL}/?v={urllib.parse.quote(surl, safe='')}&tg=1"
-    elif PLAYER_URL:
-        encoded_stream = urllib.parse.quote(stream_url)
+        params: List[str] = [f"v={urllib.parse.quote(surl, safe='')}"]
+        if dir_path:
+            params.append(f"path={urllib.parse.quote(dir_path, safe='')}")
+        if playlist_count > 1:
+            params.append("list=1")
+        if idx is not None and idx >= 0 and not is_summary:
+            params.append(f"idx={idx}")
+        params.append("tg=1")
+        player_link = f"{PLAYER_URL}/?{'&'.join(params)}"
+    elif PLAYER_URL and stream_url:
+        encoded_stream = urllib.parse.quote(stream_url, safe="")
         params = [f"stream={encoded_stream}", "tg=1"]
-        if encoded_title:
-            params.append(f"title={encoded_title}")
-        if encoded_size:
-            params.append(f"size={encoded_size}")
-        if encoded_thumb:
-            params.append(f"thumb={encoded_thumb}")
+        if title:
+            params.append(f"title={urllib.parse.quote(title)}")
+        if size:
+            params.append(f"size={urllib.parse.quote(size)}")
+        if thumb and thumb.startswith("http"):
+            params.append(f"thumb={urllib.parse.quote(thumb)}")
         player_link = f"{PLAYER_URL}/?{'&'.join(params)}"
     else:
-        player_link = stream_url
+        player_link = stream_url or get_channel_invite_link()
 
-    # Button 1: Watch Online Full HD
-    markup.add(types.InlineKeyboardButton(
-        text="🟢 ▶️ WATCH ONLINE (FULL HD) 🍿",
-        url=player_link,
-    ))
+    if is_summary and playlist_count > 1:
+        watch_label = f"🟢 ▶️ WATCH ALL ({playlist_count} VIDEOS) 🍿"
+    elif idx is not None and playlist_count > 1:
+        watch_label = f"🟢 ▶️ WATCH PART {idx + 1}/{playlist_count} (HD) 🍿"
+    else:
+        watch_label = "🟢 ▶️ WATCH ONLINE (FULL HD) 🍿"
 
-    # Button 2: Fast Direct Download (Permanent Worker /dl/ or player ?dl=1 so links never expire)
+    markup.add(types.InlineKeyboardButton(text=watch_label, url=player_link))
+
     if extractor.worker_url and surl:
-        download_url = f"{extractor.worker_url}/dl/{urllib.parse.quote(surl, safe='')}"
+        dl_params: List[str] = []
+        if idx is not None and idx >= 0 and not is_summary:
+            dl_params.append(f"idx={idx}")
+        if file_id:
+            dl_params.append(f"fid={urllib.parse.quote(file_id, safe='')}")
+        if dir_path:
+            dl_params.append(f"path={urllib.parse.quote(dir_path, safe='')}")
+        dl_q = f"?{'&'.join(dl_params)}" if dl_params else ""
+        download_url = f"{extractor.worker_url}/dl/{urllib.parse.quote(surl, safe='')}{dl_q}"
     elif PLAYER_URL:
         download_url = f"{player_link}&dl=1" if "?" in player_link else f"{player_link}?dl=1"
     else:
-        download_url = stream_url
+        download_url = stream_url or get_channel_invite_link()
 
-    markup.add(types.InlineKeyboardButton(
-        text="⚡ 📥 FAST DIRECT DOWNLOAD 🚀",
-        url=download_url,
-    ))
+    dl_label = "⚡ 📥 FAST DIRECT DOWNLOAD (PART 1) 🚀" if is_summary and playlist_count > 1 else "⚡ 📥 FAST DIRECT DOWNLOAD 🚀"
+    markup.add(types.InlineKeyboardButton(text=dl_label, url=download_url))
 
     return markup, player_link
 
 
-def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, markup: types.InlineKeyboardMarkup, short_link: str = ""):
-    """Sends the formatted video card with guaranteed photo preview."""
+def _send_telegram_with_retry(fn, *args, **kwargs):
+    """Calls a Telegram Bot API method with automatic RetryAfter flood-wait handling."""
+    for attempt in range(3):
+        try:
+            return fn(*args, **kwargs)
+        except telebot.apihelper.ApiTelegramException as e:
+            if e.error_code == 429 and attempt < 2:
+                retry_after = 5
+                try:
+                    retry_after = int(e.result_json.get("parameters", {}).get("retry_after", 5))
+                except Exception:
+                    pass
+                time.sleep(min(max(retry_after, 1), 15) + 0.5)
+                continue
+            raise
+
+
+def publish_card(
+    chat_id,
+    title: str,
+    size: str,
+    quality: str,
+    thumb_url: str,
+    markup: types.InlineKeyboardMarkup,
+    prefetched_bio: Optional[io.BytesIO] = None,
+):
+    """Sends the formatted video card with guaranteed binary photo upload or clean fallback."""
     safe_title = html.escape(title[:120])
-    size_label = size if (size and size not in ["0 B", "Unknown Size", "HD Stream"]) else "1080p HD"
+    fallback_q = quality if (quality and quality not in ("Unknown", "")) else "HD Stream"
+    size_label = size if (size and size not in ("0 B", "Unknown Size", "HD Stream")) else fallback_q
     safe_size = html.escape(str(size_label))
     caption = f"🎬 <b>{safe_title}</b>\n\n📦 <b>Size:</b> {safe_size}"
 
-    # 1. Download real image bytes and upload directly (Fixes missing thumbnail preview!)
-    if thumb_url and thumb_url.startswith("http"):
+    # 1. Binary photo stream (either pre-fetched concurrently or downloaded now)
+    img_bio = prefetched_bio
+    if img_bio is not None:
+        img_bio.seek(0)
+    elif thumb_url and thumb_url.startswith("http"):
         img_bio = download_image_bytes(thumb_url)
-        if img_bio:
-            try:
-                return bot.send_photo(
-                    chat_id=chat_id,
-                    photo=img_bio,
-                    caption=caption,
-                    reply_markup=markup,
-                )
-            except Exception as e:
-                logger.warning(f"Direct photo stream upload failed for {chat_id}: {e}")
 
-    # 2. Try URL delivery if short enough and bytes download failed
+    if img_bio:
+        try:
+            return _send_telegram_with_retry(
+                bot.send_photo,
+                chat_id=chat_id,
+                photo=img_bio,
+                caption=caption,
+                reply_markup=markup,
+            )
+        except Exception as e:
+            logger.warning(f"Direct photo stream upload failed for {chat_id}: {e}")
+
+    # 2. Try URL delivery if short enough
     if thumb_url and thumb_url.startswith("http") and len(thumb_url) < 900:
         try:
-            return bot.send_photo(
+            return _send_telegram_with_retry(
+                bot.send_photo,
                 chat_id=chat_id,
                 photo=thumb_url,
                 caption=caption,
@@ -220,23 +333,155 @@ def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, m
         except Exception as e:
             logger.warning(f"Direct URL photo delivery failed for {chat_id}: {e}")
 
-    # 3. Cinematic high-res fallback poster
+    # 3. High-res fallback poster
     try:
-        return bot.send_photo(
+        return _send_telegram_with_retry(
+            bot.send_photo,
             chat_id=chat_id,
             photo=DEFAULT_POSTER,
             caption=caption,
             reply_markup=markup,
         )
     except Exception as e:
-        logger.warning(f"Default poster photo delivery also failed for {chat_id}: {e}")
+        logger.warning(f"Default poster photo delivery failed for {chat_id}: {e}")
 
     # 4. Text fallback
-    return bot.send_message(
+    return _send_telegram_with_retry(
+        bot.send_message,
         chat_id=chat_id,
         text=caption,
         reply_markup=markup,
     )
+
+
+def _prefetch_thumbnails(videos: List[Dict[str, Any]]) -> Dict[int, Optional[io.BytesIO]]:
+    """Concurrently fetches thumbnails for multi-video folders via Worker proxy."""
+    results: Dict[int, Optional[io.BytesIO]] = {}
+    targets = [(i, v.get("thumbnail")) for i, v in enumerate(videos) if v.get("thumbnail")]
+    if not targets:
+        return results
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(targets))) as ex:
+        fut_map = {ex.submit(download_image_bytes, url): idx for idx, url in targets}
+        for fut in concurrent.futures.as_completed(fut_map):
+            idx = fut_map[fut]
+            try:
+                results[idx] = fut.result()
+            except Exception:
+                results[idx] = None
+    return results
+
+
+def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "") -> int:
+    """
+    Publishes either a single video card OR a Playlist Summary + all individual folder cards
+    (with thumbnails, titles, and sizes). Returns number of cards published.
+    """
+    surl = data.get("surl") or ""
+    dir_path = data.get("dir_path") or ""
+    videos = data.get("videos") or []
+
+    if not videos and (data.get("title") or surl):
+        videos = [data]
+
+    total = len(videos)
+    if total == 0:
+        return 0
+
+    if total == 1:
+        vid = videos[0]
+        raw_title = vid.get("title") or ""
+        title = raw_title if raw_title not in ("TeraBox Video", "TeraBox Video Stream") else (title_hint or raw_title or "TeraBox Video")
+        size = vid.get("size_formatted", "")
+        quality = vid.get("quality", "HD")
+        stream_url = vid.get("stream_url", "")
+        thumb_url = vid.get("thumbnail") or ""
+        fid = vid.get("file_id") or ""
+
+        markup, _ = build_channel_markup(
+            stream_url=stream_url,
+            title=title,
+            size=size,
+            surl=surl,
+            thumb=thumb_url,
+            dir_path=dir_path,
+            file_id=fid,
+        )
+        publish_card(chat_id, title, size, quality, thumb_url, markup)
+        return 1
+
+    # Multi-video folder collection!
+    publish_subset = videos[:MAX_FOLDER_CARDS]
+    thumbs_cache = _prefetch_thumbnails(publish_subset)
+
+    try:
+        total_bytes = sum(int(v.get("size_bytes") or 0) for v in videos)
+        folder_label = dir_path.strip("/").split("/")[-1] if dir_path else ""
+        summary_title = f"📁 {folder_label or 'Collection'} ({total} Videos)"
+        summary_size = f"{format_bytes(total_bytes)} Total ({total} Files)" if total_bytes > 0 else f"{total} Videos (Playlist)"
+        lead_thumb = next((v.get("thumbnail") for v in publish_subset if v.get("thumbnail")), "")
+
+        summary_markup, _ = build_channel_markup(
+            stream_url=publish_subset[0].get("stream_url", ""),
+            title=summary_title,
+            size=summary_size,
+            surl=surl,
+            thumb=lead_thumb,
+            dir_path=dir_path,
+            playlist_count=total,
+            is_summary=True,
+        )
+        publish_card(
+            chat_id,
+            summary_title,
+            summary_size,
+            "Playlist",
+            lead_thumb,
+            summary_markup,
+            prefetched_bio=thumbs_cache.get(0),
+        )
+
+        sent_count = 1
+        for i, vid in enumerate(publish_subset):
+            time.sleep(0.45)
+            raw_title = vid.get("title") or f"Video {i + 1}"
+            item_title = f"[{i + 1}/{total}] {raw_title}"
+            item_size = vid.get("size_formatted", "")
+            item_quality = vid.get("quality", "HD")
+            item_stream = vid.get("stream_url", "")
+            item_thumb = vid.get("thumbnail") or ""
+            item_fid = vid.get("file_id") or ""
+
+            item_markup, _ = build_channel_markup(
+                stream_url=item_stream,
+                title=raw_title,
+                size=item_size,
+                surl=surl,
+                thumb=item_thumb,
+                dir_path=dir_path,
+                idx=i,
+                file_id=item_fid,
+                playlist_count=total,
+                is_summary=False,
+            )
+            publish_card(
+                chat_id,
+                item_title,
+                item_size,
+                item_quality,
+                item_thumb,
+                item_markup,
+                prefetched_bio=thumbs_cache.get(i),
+            )
+            sent_count += 1
+
+        return sent_count
+    finally:
+        for bio in thumbs_cache.values():
+            if bio is not None:
+                try:
+                    bio.close()
+                except Exception:
+                    pass
 
 
 # ==============================================================
@@ -245,69 +490,50 @@ def publish_card(chat_id, title: str, size: str, quality: str, thumb_url: str, m
 @bot.channel_post_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 @bot.edited_channel_post_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 def handle_channel_post(message: types.Message):
-    """Catches TeraBox links posted directly in the channel and replaces them smoothly with the video card."""
+    """Catches all media links posted in the channel and replaces them with rich TeravidsPlay cards."""
     logger.info(f"Incoming channel post in chat ID {message.chat.id}")
-    raw_url = extract_url_from_message(message)
-    if not raw_url or not is_terabox_url(raw_url):
+    urls = extract_urls_from_message(message)
+    if not urls:
         return
 
-    surl_preview = extractor.parse_surl(raw_url) or ""
-    masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"
-    logger.info(f"Processing verified TeraBox link in channel: surl={masked_token}")
-    title_hint = extract_title_hint_from_message(message, raw_url)
+    title_hint = extract_title_hint_from_message(message, urls)
+    any_published = False
 
-    data = extractor.get_video_stream(raw_url)
-    surl = data.get("surl") or extractor.parse_surl(raw_url) or ""
+    for raw_url in urls:
+        surl_preview = extractor.parse_surl(raw_url) or ""
+        masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"
+        logger.info(f"Processing verified channel link: surl={masked_token}")
 
-    if data.get("success"):
-        extracted_title = data.get("title") or ""
-        if extracted_title and extracted_title not in ["TeraBox Video", "TeraBox Video Stream"]:
-            title = extracted_title
-        else:
-            title = title_hint or extracted_title or "TeraBox Video"
-        size = data.get("size_formatted", "")
-        quality = data.get("quality", "HD 1080p")
-        stream_url = data.get("stream_url")
-        thumb_url = data.get("thumbnail")
-    elif surl:
-        logger.info(f"Using instant Web Player fallback for channel post: {masked_token}")
-        title = data.get("title") if (data.get("title") and data.get("title") not in ["TeraBox Video", "TeraBox Video Stream"]) else (title_hint or data.get("title") or "TeraBox Video")
-        size = data.get("size_formatted") or "1080p HD"
-        quality = data.get("quality") or "HD 1080p"
-        stream_url = data.get("stream_url") or ""
-        thumb_url = data.get("thumbnail")
-    else:
-        logger.warning(f"Resolution failed for channel post: {data.get('message')}")
+        data = extractor.get_video_stream(raw_url)
+        if data.get("requires_auth_api"):
+            logger.warning(f"Skipping DiskWala channel post (requires authenticated API): {data.get('message')}")
+            continue
+
+        videos = data.get("videos") or []
+        has_playable_or_real = bool(
+            data.get("success")
+            and (
+                any(v.get("stream_url") or v.get("hls_url") for v in videos)
+                or (data.get("title") and data["title"] not in ("TeraBox Video", "TeraBox Video Stream"))
+                or any(v.get("title") and v["title"] not in ("TeraBox Video", "TeraBox Video Stream") for v in videos)
+            )
+        )
+
+        if not has_playable_or_real:
+            logger.warning(f"Resolution unavailable for channel link {masked_token}; skipping empty card publish.")
+            continue
+
+        count = publish_resolved_bundle(message.chat.id, data, title_hint=title_hint)
+        if count > 0:
+            any_published = True
+            logger.info(f"Successfully published {count} card(s) to channel {message.chat.id}!")
+
+    if any_published:
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-        except Exception:
-            pass
-        return
-
-    markup, short_link = build_channel_markup(
-        stream_url=stream_url,
-        title=title,
-        size=size,
-        surl=surl,
-        thumb=thumb_url or "",
-    )
-
-    sent_msg = publish_card(
-        chat_id=message.chat.id,
-        title=title,
-        size=size,
-        quality=quality,
-        thumb_url=thumb_url,
-        markup=markup,
-        short_link=short_link,
-    )
-    logger.info(f"Successfully published video card to channel! Message ID: {getattr(sent_msg, 'message_id', 'unknown')}")
-
-    try:
-        bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-        logger.info(f"Deleted raw post {message.message_id} in channel.")
-    except Exception as e:
-        logger.info(f"Could not delete original post: {e}")
+            logger.info(f"Deleted raw post {message.message_id} in channel.")
+        except Exception as e:
+            logger.info(f"Could not delete original post: {e}")
 
 
 # ==============================================================
@@ -321,10 +547,25 @@ def get_channel_invite_link() -> str:
     return "https://t.me/teravidsplayer"
 
 
+def is_channel_admin(user_id: Optional[int]) -> bool:
+    """Checks whether a DM user is an authorized channel owner/admin allowed to publish to TARGET_CHANNEL_ID."""
+    if user_id is None:
+        return False
+    if str(user_id) in ADMIN_USER_IDS:
+        return True
+    if not TARGET_CHANNEL_ID:
+        return False
+    try:
+        member = bot.get_chat_member(TARGET_CHANNEL_ID, user_id)
+        return member.status in ("creator", "administrator")
+    except Exception:
+        return False
+
+
 def is_user_subscribed(user_id: int) -> bool:
     """
     Checks if a user is subscribed to the official target channel.
-    Returns True if subscribed, creator, administrator, or if TARGET_CHANNEL_ID is not set.
+    Only locks users out on explicit non-member API responses; transient errors fail open.
     """
     if not TARGET_CHANNEL_ID:
         return True
@@ -333,10 +574,10 @@ def is_user_subscribed(user_id: int) -> bool:
         return member.status in ["creator", "administrator", "member", "restricted"]
     except telebot.apihelper.ApiTelegramException as e:
         err_msg = str(e).lower()
-        if "user_not_participant" in err_msg or "participant_id_invalid" in err_msg:
+        if any(tok in err_msg for tok in ("user_not_participant", "participant_id_invalid", "kicked", "left")):
             return False
-        logger.warning(f"FSub API check: user_id={user_id} - {e}")
-        return False
+        logger.warning(f"Transient FSub API error for user {user_id}: {e}")
+        return True
     except Exception as e:
         logger.warning(f"Unexpected FSub error for user {user_id}: {e}")
         return True
@@ -345,7 +586,7 @@ def is_user_subscribed(user_id: int) -> bool:
 FORCE_SUB_TEXT = (
     "🔒 <b>Access Restricted — Channel Members Only!</b>\n\n"
     "To use <b>TeravidsPlay Bot</b> and stream TeraBox videos with:\n"
-    "• ⚡ Instant 1080p Full HD Streaming\n"
+    "• ⚡ Instant Full HD Streaming\n"
     "• 🚫 Zero Ads & Zero Popups\n"
     "• 🚀 High-Speed Direct Downloads\n\n"
     "👉 You must join our official channel <b>@teravidsplayer</b> first!\n\n"
@@ -381,9 +622,9 @@ def handle_verify_fsub(call: types.CallbackQuery):
                     "Welcome to <b>TeravidsPlay</b> 🚀\n"
                     "Your access has been successfully unlocked.\n\n"
                     "🎬 <b>How to Watch:</b>\n"
-                    "• Send any TeraBox link here in DM.\n"
-                    "• Enjoy fast 1080p streaming with Zero Ads!\n\n"
-                    "📢 Browse trending movies & series on <b>@teravidsplayer</b>"
+                    "• Send any TeraBox video or folder link here in DM.\n"
+                    "• Enjoy fast Full HD streaming with Zero Ads!\n\n"
+                    "📢 Browse trending videos on <b>@teravidsplayer</b>"
                 ),
                 parse_mode="HTML",
             )
@@ -407,7 +648,7 @@ def handle_verify_fsub(call: types.CallbackQuery):
 def handle_start(message: types.Message):
     uid = message.from_user.id if message.from_user else None
     if message.chat.type == "private" and uid is not None and not is_user_subscribed(uid):
-        bot.reply_to(
+        _reply_or_send(
             message,
             FORCE_SUB_TEXT,
             reply_markup=get_force_sub_markup(),
@@ -416,18 +657,18 @@ def handle_start(message: types.Message):
         return
 
     welcome_text = (
-        "📢 <b>Welcome to TeravidsPlay Channel Bot!</b>\n\n"
-        "Send me any TeraBox video link here, or post it directly in your channel <b>@teravidsplayer</b>.\n\n"
+        "📢 <b>Welcome to TeravidsPlay Bot!</b>\n\n"
+        "Send me any TeraBox video or multi-video folder link here, or post it in <b>@teravidsplayer</b>.\n\n"
         "<b>Features:</b>\n"
-        "• Automatic 720p/1080p stream resolution.\n"
+        "• Supports single videos AND multi-video folder playlists.\n"
         "• Long-press 2X & 4X speed controls.\n"
         "• Web Audio API 300% volume booster.\n"
         "• Double-tap 10s seek & Auto-resume.\n"
-        "• Zero Ads & Zero Popups.\n\n"
+        "• Zero Ads & Zero Popups — everything plays inside TeravidsPlay!\n\n"
         f"• <b>Target Channel:</b> <code>{html.escape(TARGET_CHANNEL_ID or 'Not Set')}</code>\n"
         "• <b>Status Check:</b> /status"
     )
-    bot.reply_to(message, welcome_text)
+    _reply_or_send(message, welcome_text)
 
 
 BOT_USERNAME = ""
@@ -441,7 +682,7 @@ except Exception:
 def handle_status(message: types.Message):
     uid = message.from_user.id if message.from_user else None
     if message.chat.type == "private" and uid is not None and not is_user_subscribed(uid):
-        bot.reply_to(
+        _reply_or_send(
             message,
             FORCE_SUB_TEXT,
             reply_markup=get_force_sub_markup(),
@@ -460,20 +701,20 @@ def handle_status(message: types.Message):
     safe_channel = html.escape(TARGET_CHANNEL_ID or "Not Set")
     status_text = (
         "⚙️ <b>TeravidsPlay System Diagnostics</b>\n\n"
-        "• <b>Engine:</b> 🚀 High-Speed Direct Edge Engine (Active)\n"
+        "• <b>Engine:</b> 🚀 Multi-Video Edge + Folder Resolver (Active)\n"
         f"• <b>Web Player:</b> {'✅ ' + safe_player if safe_player else '⚠️ Not Set'}\n"
         f"• <b>Target Channel:</b> <code>{safe_channel}</code>\n"
         f"• <b>Bot Username:</b> @{html.escape(BOT_USERNAME)}\n"
     )
-    bot.reply_to(message, status_text)
+    _reply_or_send(message, status_text)
 
 
 @bot.message_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 def handle_private_post(message: types.Message):
-    """Handles TeraBox links sent to the bot in private DM."""
+    """Handles video & folder links sent to the bot in private DM (admin-only channel sync)."""
     uid = message.from_user.id if message.from_user else None
     if message.chat.type == "private" and uid is not None and not is_user_subscribed(uid):
-        bot.reply_to(
+        _reply_or_send(
             message,
             FORCE_SUB_TEXT,
             reply_markup=get_force_sub_markup(),
@@ -481,105 +722,77 @@ def handle_private_post(message: types.Message):
         )
         return
 
-    raw_url = extract_url_from_message(message)
-    if not raw_url or not is_terabox_url(raw_url):
+    urls = extract_urls_from_message(message)
+    if not urls:
         if message.chat.type == "private":
             hint_text = (
                 "👋 <b>Welcome to TeravidsPlay!</b>\n\n"
-                "Please send a valid <b>TeraBox link</b> to stream or download.\n\n"
-                "💡 <i>Example:</i> <code>https://terabox.com/s/1abcXYZ...</code>\n\n"
-                "📢 Or explore our latest collection on <b>@teravidsplayer</b>!"
+                "Please send a valid <b>TeraBox video or folder link</b> to watch or download.\n\n"
+                "📢 Explore trending releases on <b>@teravidsplayer</b>!"
             )
-            bot.reply_to(message, hint_text, parse_mode="HTML")
+            _reply_or_send(message, hint_text, parse_mode="HTML")
         return
-
-    surl_preview = extractor.parse_surl(raw_url) or ""
-    masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"
-    logger.info(f"Processing verified TeraBox link in DM: surl={masked_token}")
 
     waiting_msg = None
     try:
         waiting_msg = bot.send_message(
             chat_id=message.chat.id,
-            text="⏳ <b>Resolving video stream...</b>",
+            text="⏳ <b>Resolving video stream &amp; preview...</b>",
             parse_mode="HTML",
         )
     except Exception:
         pass
 
-    title_hint = extract_title_hint_from_message(message, raw_url)
-    data = extractor.get_video_stream(raw_url)
-    surl = data.get("surl") or extractor.parse_surl(raw_url) or ""
+    title_hint = extract_title_hint_from_message(message, urls)
+    can_post_channel = bool(TARGET_CHANNEL_ID and is_channel_admin(uid))
 
-    if data.get("success"):
-        extracted_title = data.get("title") or ""
-        if extracted_title and extracted_title not in ["TeraBox Video", "TeraBox Video Stream"]:
-            title = extracted_title
-        else:
-            title = title_hint or extracted_title or "TeraBox Video"
-        size = data.get("size_formatted", "")
-        quality = data.get("quality", "HD 1080p")
-        stream_url = data.get("stream_url")
-        thumb_url = data.get("thumbnail")
-    elif surl:
-        title = data.get("title") if (data.get("title") and data.get("title") not in ["TeraBox Video", "TeraBox Video Stream"]) else (title_hint or data.get("title") or "TeraBox Video")
-        size = data.get("size_formatted") or "1080p HD"
-        quality = data.get("quality") or "HD 1080p"
-        stream_url = data.get("stream_url") or ""
-        thumb_url = data.get("thumbnail")
-    else:
+    try:
+        for raw_url in urls:
+            surl_preview = extractor.parse_surl(raw_url) or ""
+            masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"
+            logger.info(f"Processing verified DM link: surl={masked_token}")
+
+            data = extractor.get_video_stream(raw_url)
+
+            # Handle DiskWala cleanly without redirecting externally
+            if data.get("requires_auth_api"):
+                dw_size = html.escape(str(data.get("size_formatted") or "Unknown"))
+                dw_title = html.escape(str(data.get("title") or "DiskWala Video"))
+                _reply_or_send(
+                    message,
+                    f"⚠️ <b>{dw_title} ({dw_size})</b>\n\n"
+                    "DiskWala links are locked to the DiskWala mobile app and require paid/authenticated "
+                    "DiskWala API credentials (<code>DISKWALA_API_URL</code>).\n\n"
+                    "💡 Send any TeraBox link instead to watch directly inside <b>TeravidsPlay</b>!",
+                    parse_mode="HTML",
+                )
+                continue
+
+            if not data.get("success") or (not data.get("videos") and data.get("metadata_only")):
+                safe_err = html.escape(str(data.get("message", "Could not resolve this link right now. Please try again.")))
+                _reply_or_send(
+                    message,
+                    f"⚠️ <b>Stream Temporarily Unavailable:</b>\n{safe_err}",
+                    parse_mode="HTML",
+                )
+                continue
+
+            # Auto-publish to TARGET_CHANNEL_ID ONLY if sender is an Admin/Creator
+            if can_post_channel:
+                try:
+                    target = int(TARGET_CHANNEL_ID) if TARGET_CHANNEL_ID.lstrip("-").isdigit() else TARGET_CHANNEL_ID
+                    publish_resolved_bundle(target, data, title_hint=title_hint)
+                    logger.info(f"Admin {uid} published link to channel {TARGET_CHANNEL_ID}")
+                except Exception as e:
+                    logger.error(f"Failed to publish to channel {TARGET_CHANNEL_ID}: {e}")
+
+            publish_resolved_bundle(message.chat.id, data, title_hint=title_hint)
+    finally:
         if waiting_msg:
             try:
                 bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
             except Exception:
                 pass
-        safe_err = html.escape(str(data.get("message", "Link expired or unreachable.")))
-        bot.reply_to(
-            message,
-            f"❌ <b>Resolution Failed:</b>\n{safe_err}",
-            parse_mode="HTML",
-        )
-        return
-
-    markup, short_link = build_channel_markup(
-        stream_url=stream_url,
-        title=title,
-        size=size,
-        surl=surl,
-        thumb=thumb_url or "",
-    )
-
-    if TARGET_CHANNEL_ID:
-        try:
-            target = int(TARGET_CHANNEL_ID) if TARGET_CHANNEL_ID.lstrip("-").isdigit() else TARGET_CHANNEL_ID
-            publish_card(
-                chat_id=target,
-                title=title,
-                size=size,
-                quality=quality,
-                thumb_url=thumb_url,
-                markup=markup,
-                short_link=short_link,
-            )
-            logger.info(f"Published to channel {TARGET_CHANNEL_ID}")
-        except Exception as e:
-            logger.error(f"Failed to publish to channel {TARGET_CHANNEL_ID}: {e}")
-
-    if waiting_msg:
-        try:
-            bot.delete_message(chat_id=message.chat.id, message_id=waiting_msg.message_id)
-        except Exception:
-            pass
-
-    publish_card(
-        chat_id=message.chat.id,
-        title=title,
-        size=size,
-        quality=quality,
-        thumb_url=thumb_url,
-        markup=markup,
-        short_link=short_link,
-    )
 
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -588,6 +801,14 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     Secured against SSRF and unauthorized public execution.
     """
 
+    def _send_json_bytes(self, status_code: int, payload: bytes):
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
 
@@ -595,11 +816,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         if parsed.path in ["/diag", "/resolve", "/test"]:
             admin_secret = os.getenv("ADMIN_SECRET", "").strip()
             if not admin_secret:
-                self.send_response(404)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("X-Content-Type-Options", "nosniff")
-                self.end_headers()
-                self.wfile.write(b'{"error":"Diagnostic endpoint disabled. Set ADMIN_SECRET to enable."}')
+                self._send_json_bytes(404, b'{"error":"Diagnostic endpoint disabled. Set ADMIN_SECRET to enable."}')
                 return
 
             query = urllib.parse.parse_qs(parsed.query)
@@ -610,20 +827,12 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             token_ok = bool(token) and hmac.compare_digest(token, admin_secret)
             bearer_ok = bool(bearer_token) and hmac.compare_digest(bearer_token, admin_secret)
             if not token_ok and not bearer_ok:
-                self.send_response(401)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("X-Content-Type-Options", "nosniff")
-                self.end_headers()
-                self.wfile.write(b'{"error":"Unauthorized: Valid ADMIN_SECRET token required."}')
+                self._send_json_bytes(401, b'{"error":"Unauthorized: Valid ADMIN_SECRET token required."}')
                 return
 
             raw_target = query.get("url", ["https://terabox.com/s/12-bl47-KEpRsDf840jID3A"])[0]
             if not is_terabox_url(raw_target):
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("X-Content-Type-Options", "nosniff")
-                self.end_headers()
-                self.wfile.write(b'{"error":"Invalid target: Domain must belong to authorized TeraBox services."}')
+                self._send_json_bytes(400, b'{"error":"Invalid target: Domain must belong to authorized media services."}')
                 return
 
             diag = {
@@ -648,19 +857,11 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 diag["step2_extractor"] = {"error": str(e)}
 
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.end_headers()
-            self.wfile.write(json.dumps(diag, indent=2).encode("utf-8"))
+            self._send_json_bytes(200, json.dumps(diag, indent=2, default=str).encode("utf-8"))
             return
 
         # 2. Public Health Check Endpoint (Only used by Render/Koyeb uptime probes)
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.wfile.write(b'{"status":"ok","service":"TeravidsPlay Bot"}')
+        self._send_json_bytes(200, b'{"status":"ok","service":"TeravidsPlay Bot"}')
 
     def log_message(self, format, *args):
         pass

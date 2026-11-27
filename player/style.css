@@ -1560,7 +1560,8 @@ body {
     box-shadow: none !important;
   }
 
-  .cinema-player-viewport.mobile-force-landscape video {
+  .cinema-player-viewport.mobile-force-landscape video,
+  .cinema-player-viewport.mobile-force-landscape .video-poster-overlay {
     width: 100% !important;
     height: 100% !important;
     object-fit: contain !important;
@@ -1575,14 +1576,208 @@ body {
 
   body.mobile-rotated-active .app-navbar,
   body.mobile-rotated-active .video-info-section,
+  body.mobile-rotated-active .playlist-section,
+  body.mobile-rotated-active .playlist-nav-bar,
   body.mobile-rotated-active .home-container {
     display: none !important;
   }
 }
 
+/* ==========================================================================
+   13. FOLDER PLAYLIST & EPISODE SELECTOR
+   ========================================================================== */
+.playlist-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--cinema-surface);
+  border: 1px solid var(--cinema-border);
+  border-radius: 14px;
+}
+
+.playlist-nav-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.playlist-position-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cinema-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.playlist-section {
+  margin-top: 20px;
+  background: var(--cinema-surface);
+  border: 1px solid var(--cinema-border);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.playlist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--cinema-border);
+}
+
+.playlist-heading {
+  font-size: 16px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.playlist-count-pill {
+  font-size: 12px;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.playlist-grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.playlist-card {
+  width: 100%;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1.5px solid var(--cinema-border);
+  border-radius: 12px;
+  color: var(--cinema-text);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.playlist-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+.playlist-card[aria-current="true"] {
+  background: rgba(255, 0, 0, 0.12);
+  border-color: var(--yt-red);
+  box-shadow: 0 0 0 1px rgba(255, 0, 0, 0.35);
+}
+
+.playlist-thumb-wrap {
+  position: relative;
+  width: 112px;
+  aspect-ratio: 16 / 9;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0b0f19;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.playlist-thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.playlist-index-tag {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(6, 9, 14, 0.85);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.playlist-duration-tag {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(6, 9, 14, 0.88);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.playlist-card-meta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.playlist-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.playlist-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--cinema-text-muted);
+}
+
+.playlist-now-pill {
+  color: #ff4d4d;
+  font-weight: 800;
+  border: 1px solid rgba(255, 77, 77, 0.55);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+@media (max-width: 600px) {
+  .playlist-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .playlist-thumb-wrap {
+    width: 96px;
+  }
+}
+
 /* Immersive Landscape on Mobile Devices (Physical Phone Rotation) */
 @media (max-height: 520px) and (orientation: landscape) {
-  .app-navbar {
+  .app-navbar,
+  .playlist-section,
+  .playlist-nav-bar {
     display: none !important;
   }
 

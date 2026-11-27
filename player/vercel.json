@@ -17,7 +17,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' https://telegram.org https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' https://teravidsplay.proxyking.workers.dev https://*.workers.dev https://*.replit.dev https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://web.telegram.org https://*.telegram.org;"
+          "value": "default-src 'self'; script-src 'self' https://telegram.org https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' https://teravidsplay.proxyking.workers.dev https://*.workers.dev https://*.replit.dev https://*.replit.app https://*.qzz.io https://*.1024terabox.com https://*.teraboxcdn.com https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://web.telegram.org https://*.telegram.org;"
         }
       ]
     }
@@ -32,7 +32,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/((?!style\\.css|app\\.js|favicon\\.ico).*)",
+      "source": "/((?!style\\.css|app\\.js|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.json|.*\\.(?:png|jpg|jpeg|webp|svg|ico|txt|xml|json)$).*)",
       "destination": "/index.html"
     }
   ]
