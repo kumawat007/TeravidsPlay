@@ -42,7 +42,8 @@ load_dotenv(dotenv_path)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PLAYER_URL = (os.getenv("PLAYER_URL") or "https://teravidsplayer.vercel.app").rstrip("/")
 TARGET_CHANNEL_ID = os.getenv("TARGET_CHANNEL_ID", "").strip()
-MINI_APP_NAME = os.getenv("MINI_APP_NAME", "").strip()
+_env_mini_app = os.getenv("MINI_APP_NAME")
+MINI_APP_NAME = (_env_mini_app if _env_mini_app is not None else "TeravidsPlay").strip()
 BOT_USERNAME_ENV = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 BOT_USERNAME = BOT_USERNAME_ENV
 ADMIN_USER_IDS = {

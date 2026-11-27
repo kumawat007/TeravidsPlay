@@ -71,7 +71,19 @@ document.addEventListener('DOMContentLoaded', () => {
   ];
 
   const BOT_USERNAME = 'Teravidsplayerbot';
+  const MINI_APP_NAME = 'TeravidsPlay';
   const TARGET_CHANNEL_URL = 'https://t.me/teravidsplayer';
+
+  const appSplash = document.getElementById('appSplash');
+  function dismissAppSplash() {
+    if (!appSplash || appSplash.hidden) return;
+    appSplash.classList.add('splash-hidden');
+    setTimeout(() => {
+      appSplash.hidden = true;
+      appSplash.style.display = 'none';
+    }, 300);
+  }
+  setTimeout(dismissAppSplash, 650);
 
   // 1. Telegram WebApp Integration (Never trust ?tg=1 URL param; require cryptographic initData)
   const tg = window.Telegram?.WebApp;
@@ -445,6 +457,9 @@ document.addEventListener('DOMContentLoaded', () => {
       idx: activeVideoIndex || requestedIdx,
       stream: streamUrl || (isSafeHttpUrl(resolveInput) ? resolveInput : ''),
     });
+    if (MINI_APP_NAME) {
+      return `https://t.me/${BOT_USERNAME}/${MINI_APP_NAME}?startapp=${encodeURIComponent(compact)}`;
+    }
     return `https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(compact)}`;
   }
 
@@ -823,7 +838,10 @@ document.addEventListener('DOMContentLoaded', () => {
     homeJoinChannelBtn.addEventListener('click', () => handleVipHomeAction(TARGET_CHANNEL_URL));
   }
   if (homeMiniAppBtn) {
-    homeMiniAppBtn.addEventListener('click', () => handleVipHomeAction(`https://t.me/${BOT_USERNAME}?start=open`));
+    const homeMiniUrl = MINI_APP_NAME
+      ? `https://t.me/${BOT_USERNAME}/${MINI_APP_NAME}?startapp=open`
+      : `https://t.me/${BOT_USERNAME}?start=open`;
+    homeMiniAppBtn.addEventListener('click', () => handleVipHomeAction(homeMiniUrl));
   }
   if (openAgeAdvisoryBtn && ageGateDialog && typeof ageGateDialog.showModal === 'function') {
     openAgeAdvisoryBtn.addEventListener('click', () => {
@@ -875,11 +893,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (playerView) playerView.style.display = 'none';
     document.title = 'TeravidsPlay — 18+ VIP Telegram Mini App Cinema';
     if (videoElement && !videoElement.paused) videoElement.pause();
+    requestAnimationFrame(() => setTimeout(dismissAppSplash, 180));
   }
 
   function activatePlayerView() {
     if (homePage) homePage.style.display = 'none';
     if (playerView) playerView.style.display = 'block';
+    requestAnimationFrame(() => setTimeout(dismissAppSplash, 180));
   }
 
   if (hasMedia) {

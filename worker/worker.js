@@ -1188,6 +1188,7 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl) {
 }
 
 const DEFAULT_BOT_USERNAME = "Teravidsplayerbot";
+const DEFAULT_MINI_APP_NAME = "TeravidsPlay";
 const DEFAULT_TARGET_CHANNEL = "@teravidsplayer";
 
 function toBase64Url(str) {
@@ -1234,7 +1235,7 @@ function encodeCompactStartToken({ surl = "", dirPath = "", idx = 0, streamUrl =
 
 function buildMiniAppDeepLink(compactToken, env = {}) {
   const botUser = (env.BOT_USERNAME || DEFAULT_BOT_USERNAME).replace(/^@/, "");
-  const miniApp = (env.MINI_APP_NAME || "").trim();
+  const miniApp = (env.MINI_APP_NAME !== undefined ? env.MINI_APP_NAME : DEFAULT_MINI_APP_NAME).trim();
   const tok = (compactToken || "open").slice(0, 64);
   if (miniApp) {
     return `https://t.me/${botUser}/${miniApp}?startapp=${encodeURIComponent(tok)}`;

@@ -46,6 +46,87 @@ body {
 }
 
 /* ==========================================================================
+   0. APP SPLASH SCREEN (Uses 512x512 SVG Icon)
+   ========================================================================== */
+.app-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: radial-gradient(circle at 50% 35%, rgba(225, 29, 72, 0.2) 0%, #06090e 65%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.28s ease-out;
+}
+
+.app-splash.splash-hidden {
+  opacity: 0;
+}
+
+.app-splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.app-splash-logo {
+  width: 84px;
+  height: 84px;
+  filter: drop-shadow(0 0 24px rgba(225, 29, 72, 0.45));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-splash-logo {
+    animation: vipPulse 1.6s ease-in-out infinite;
+  }
+}
+
+.app-splash-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  color: #ffffff;
+}
+
+progress.splash-progress {
+  width: 120px;
+  height: 4px;
+  border-radius: 999px;
+  border: none;
+  overflow: hidden;
+  accent-color: #e11d48;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+progress.splash-progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+progress.splash-progress::-webkit-progress-value {
+  background: var(--vip-crimson-gradient);
+  border-radius: 999px;
+}
+
+progress.splash-progress::-moz-progress-bar {
+  background: var(--vip-crimson-gradient);
+  border-radius: 999px;
+}
+
+@media (forced-colors: active) {
+  .app-splash {
+    background: Canvas;
+  }
+
+  .app-splash-title {
+    color: CanvasText;
+  }
+}
+
+/* ==========================================================================
    1. APP NAVBAR
    ========================================================================== */
 .app-navbar {

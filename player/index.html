@@ -11,8 +11,8 @@
   <meta property="og:title" content="TeravidsPlay — 18+ VIP Telegram Mini App Player" />
   <meta property="og:description" content="Exclusive ad-free 1080p cloud cinema inside Telegram Mini App for @teravidsplayer." />
 
-  <!-- Inline SVG Favicon (Telegram Blue Icon) -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='%230088cc'/><path d='M17.5 7.5L5.5 12l4 1.5 1.5 4.5 2.5-2.5 4 3 2.5-12z' fill='%23ffffff'/></svg>" />
+  <!-- 512x512 Monochrome Cinema SVG Favicon & Mini App Splash -->
+  <link rel="icon" type="image/svg+xml" href="splash-512.svg" />
 
   <!-- Telegram WebApp SDK (unversioned dynamic SDK; constrained via CSP) -->
   <script src="https://telegram.org/js/telegram-web-app.js" referrerpolicy="no-referrer"></script>
@@ -28,6 +28,15 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="cinema-body">
+  <!-- Mini App Splash Screen (Uses exact 512x512 BotFather-ready SVG) -->
+  <div id="appSplash" class="app-splash" aria-hidden="true">
+    <div class="app-splash-inner">
+      <img src="splash-512.svg" width="84" height="84" alt="" class="app-splash-logo" />
+      <span class="app-splash-title">TeravidsPlay</span>
+      <progress class="splash-progress" aria-label="Loading TeravidsPlay"></progress>
+    </div>
+  </div>
+
   <!-- Top Navigation Bar -->
   <header class="app-navbar">
     <div class="nav-left">
@@ -273,7 +282,7 @@
                 <span>1. Join @teravidsplayer Channel</span>
               </a>
 
-              <a href="https://t.me/Teravidsplayerbot?start=open" target="_blank" rel="noopener noreferrer" class="gate-btn gate-btn-unlock" id="gateMiniAppLink" style="display: none;">
+              <a href="https://t.me/Teravidsplayerbot/TeravidsPlay?startapp=open" target="_blank" rel="noopener noreferrer" class="gate-btn gate-btn-unlock" id="gateMiniAppLink" style="display: none;">
                 <span aria-hidden="true">📱</span>
                 <span>2. Verify &amp; Watch in Mini App</span>
               </a>
