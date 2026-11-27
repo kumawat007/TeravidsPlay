@@ -331,35 +331,139 @@ document.addEventListener('DOMContentLoaded', () => {
   const rawDecodedThumb = safeDecode(rawThumb);
   const cleanThumb = isSafeHttpUrl(rawDecodedThumb) ? rawDecodedThumb : '';
 
-  // Guaranteed Poster Overlay Helpers (works even when <video poster> fails on mobile WebViews or blocked hosts)
+  // Guaranteed Poster Overlay Helpers (real CDN thumbnail + backup URL + live video frame fallback; zero random posters)
   let hasRenderedVideoFrame = false;
-  function setVideoPoster(rawThumbUrl) {
-    if (!isSafeHttpUrl(rawThumbUrl)) return;
-    const primarySrc = shouldProxyUrl(rawThumbUrl) ? toProxyUrl(rawThumbUrl) : rawThumbUrl;
-    const fallbackSrc = primarySrc === rawThumbUrl ? toProxyUrl(rawThumbUrl) : rawThumbUrl;
+  let hasActivePosterImage = false;
+  let posterCaptureGen = 0;
+  let activeCaptureVideo = null;
 
-    videoElement.poster = primarySrc;
+  function stopPosterFrameCapture() {
+    posterCaptureGen++;
+    if (activeCaptureVideo) {
+      try {
+        activeCaptureVideo.pause();
+        activeCaptureVideo.removeAttribute('src');
+        activeCaptureVideo.load();
+      } catch (e) {}
+      activeCaptureVideo = null;
+    }
+  }
+
+  function showPosterDataOrUrl(srcUrl) {
+    videoElement.poster = srcUrl;
+    hasActivePosterImage = true;
+    if (videoPosterOverlay) {
+      videoPosterOverlay.style.objectFit = videoElement.style.objectFit || 'contain';
+      videoPosterOverlay.src = srcUrl;
+      if (!hasRenderedVideoFrame) {
+        videoPosterOverlay.style.display = 'block';
+      }
+    }
+  }
+
+  function capturePosterFrameFromCandidates(candidates) {
+    if (hasRenderedVideoFrame || hasActivePosterImage || !Array.isArray(candidates)) return;
+    const capCand = candidates.find((c) => c && c.url && c.isCors && !c.isHls);
+    if (!capCand) return;
+
+    stopPosterFrameCapture();
+    const myGen = posterCaptureGen;
+    const capVid = document.createElement('video');
+    activeCaptureVideo = capVid;
+    capVid.muted = true;
+    capVid.playsInline = true;
+    capVid.preload = 'auto';
+    capVid.crossOrigin = 'anonymous';
+
+    const cleanupCap = () => {
+      if (activeCaptureVideo === capVid) activeCaptureVideo = null;
+      try {
+        capVid.removeAttribute('src');
+        capVid.load();
+      } catch (e) {}
+    };
+
+    capVid.addEventListener('loadedmetadata', () => {
+      if (myGen !== posterCaptureGen || hasRenderedVideoFrame || hasActivePosterImage) {
+        cleanupCap();
+        return;
+      }
+      const dur = Number.isFinite(capVid.duration) ? capVid.duration : 0;
+      capVid.currentTime = dur > 0 ? Math.min(2.0, Math.max(0.25, dur * 0.08)) : 0.5;
+    });
+
+    capVid.addEventListener('seeked', () => {
+      if (myGen !== posterCaptureGen || hasRenderedVideoFrame || hasActivePosterImage) {
+        cleanupCap();
+        return;
+      }
+      try {
+        const w = capVid.videoWidth || 640;
+        const h = capVid.videoHeight || 360;
+        if (w > 0 && h > 0) {
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.min(w, 1280);
+          canvas.height = Math.max(1, Math.round((canvas.width / w) * h));
+          const ctx2d = canvas.getContext('2d');
+          if (ctx2d) {
+            ctx2d.drawImage(capVid, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
+            if (dataUrl && dataUrl.startsWith('data:image/jpeg')) {
+              showPosterDataOrUrl(dataUrl);
+            }
+          }
+        }
+      } catch (e) {}
+      cleanupCap();
+    });
+
+    capVid.addEventListener('error', cleanupCap);
+    capVid.src = capCand.url;
+    capVid.load();
+  }
+
+  function setVideoPoster(rawThumbUrl, backupThumbUrl = '') {
+    const queue = [];
+    [rawThumbUrl, backupThumbUrl].forEach((raw) => {
+      if (!isSafeHttpUrl(raw)) return;
+      const first = shouldProxyUrl(raw) ? toProxyUrl(raw) : raw;
+      const second = first === raw ? toProxyUrl(raw) : raw;
+      [first, second].forEach((u) => {
+        if (u && !queue.includes(u)) queue.push(u);
+      });
+    });
+
+    if (queue.length === 0) {
+      hasActivePosterImage = false;
+      if (videoPosterOverlay) videoPosterOverlay.style.display = 'none';
+      return;
+    }
+
+    let qIdx = 0;
+    videoElement.poster = queue[0];
 
     if (videoPosterOverlay) {
-      videoPosterOverlay.dataset.fallbackAttempted = '0';
       videoPosterOverlay.onerror = () => {
-        if (videoPosterOverlay.dataset.fallbackAttempted === '0' && fallbackSrc && fallbackSrc !== videoPosterOverlay.src) {
-          videoPosterOverlay.dataset.fallbackAttempted = '1';
-          videoPosterOverlay.src = fallbackSrc;
+        qIdx++;
+        if (qIdx < queue.length) {
+          videoElement.poster = queue[qIdx];
+          videoPosterOverlay.src = queue[qIdx];
         } else {
+          hasActivePosterImage = false;
           videoPosterOverlay.style.display = 'none';
+          if (playbackQueue.length > 0) {
+            capturePosterFrameFromCandidates(playbackQueue);
+          }
         }
       };
       videoPosterOverlay.onload = () => {
+        hasActivePosterImage = true;
         if (!hasRenderedVideoFrame) {
           videoPosterOverlay.style.display = 'block';
         }
       };
       videoPosterOverlay.style.objectFit = videoElement.style.objectFit || 'contain';
-      videoPosterOverlay.src = primarySrc;
-      if (!hasRenderedVideoFrame) {
-        videoPosterOverlay.style.display = 'block';
-      }
+      videoPosterOverlay.src = queue[0];
     }
   }
 
@@ -1556,6 +1660,12 @@ document.addEventListener('DOMContentLoaded', () => {
       showError('Missing Stream URL', 'No valid stream URL was available. Tap Try Again to refresh.');
       return;
     }
+
+    if (!hasActivePosterImage && !hasRenderedVideoFrame) {
+      videoElement.preload = 'auto';
+      capturePosterFrameFromCandidates(playbackQueue);
+    }
+
     advancePlaybackCandidate();
   }
 
@@ -1660,6 +1770,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function loadStream(url, poster = '') {
     hasRenderedVideoFrame = false;
+    hasActivePosterImage = false;
+    stopPosterFrameCapture();
     resetScrubberUi();
     if (poster) setVideoPoster(poster);
     if (!url) {
@@ -1780,25 +1892,33 @@ document.addEventListener('DOMContentLoaded', () => {
       const thumbWrap = document.createElement('div');
       thumbWrap.className = 'playlist-thumb-wrap';
 
-      if (vid.thumbnailUrl && isSafeHttpUrl(vid.thumbnailUrl)) {
+      const thumbSrc = vid.thumbnailUrl || vid.fallbackThumbnailUrl || '';
+      if (thumbSrc && isSafeHttpUrl(thumbSrc)) {
         const img = document.createElement('img');
         img.width = 160;
         img.height = 90;
         img.loading = 'lazy';
         img.setAttribute('fetchpriority', 'low');
         img.alt = '';
-        const primaryThumb = shouldProxyUrl(vid.thumbnailUrl) ? toProxyUrl(vid.thumbnailUrl) : vid.thumbnailUrl;
-        const fallbackThumb = primaryThumb === vid.thumbnailUrl ? toProxyUrl(vid.thumbnailUrl) : vid.thumbnailUrl;
-        img.dataset.fallbackAttempted = '0';
+        const thumbQueue = [];
+        [vid.thumbnailUrl, vid.fallbackThumbnailUrl].forEach((raw) => {
+          if (!isSafeHttpUrl(raw)) return;
+          const p = shouldProxyUrl(raw) ? toProxyUrl(raw) : raw;
+          const f = p === raw ? toProxyUrl(raw) : raw;
+          [p, f].forEach((u) => {
+            if (u && !thumbQueue.includes(u)) thumbQueue.push(u);
+          });
+        });
+        let tIdx = 0;
         img.onerror = () => {
-          if (img.dataset.fallbackAttempted === '0' && fallbackThumb && fallbackThumb !== img.src) {
-            img.dataset.fallbackAttempted = '1';
-            img.src = fallbackThumb;
+          tIdx++;
+          if (tIdx < thumbQueue.length) {
+            img.src = thumbQueue[tIdx];
           } else {
             img.style.display = 'none';
           }
         };
-        img.src = primaryThumb;
+        img.src = thumbQueue[0];
         thumbWrap.appendChild(img);
       }
 
@@ -1868,6 +1988,8 @@ document.addEventListener('DOMContentLoaded', () => {
     activeFileId = String(vid.fileId || vid._id || '');
 
     hasRenderedVideoFrame = false;
+    hasActivePosterImage = false;
+    stopPosterFrameCapture();
     resetScrubberUi();
     errorOverlay.style.display = 'none';
     if (videoPosterOverlay) videoPosterOverlay.style.display = 'none';
@@ -1887,7 +2009,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const thumb = vid.thumbnailUrl || (clampedIdx === 0 ? cleanThumb : '');
-    if (thumb) setVideoPoster(thumb);
+    const backupThumb = vid.fallbackThumbnailUrl || '';
+    if (thumb || backupThumb) setVideoPoster(thumb, backupThumb);
 
     try {
       const nextUrl = new URL(window.location.href);

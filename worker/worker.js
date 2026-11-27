@@ -12,8 +12,6 @@
 const DEFAULT_PLAYER_URL = "https://teravidsplayer.vercel.app";
 const DEFAULT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-const DEFAULT_POSTER =
-  "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80";
 
 // Strictly allowed TeraBox domains & CDN hosts (SSRF & Open-Proxy Prevention)
 const ALLOWED_TERABOX_HOSTS = [
@@ -785,10 +783,14 @@ function mergeVideoMetadataFallbacks(videos, fallbackList) {
     if (fb && fb.title) byTitle.set(fb.title.trim().toLowerCase(), fb);
   }
   return videos.map((v, idx) => {
-    if (!v || v.thumbnailUrl) return v;
+    if (!v) return v;
     const match = (v.title && byTitle.get(v.title.trim().toLowerCase())) || (idx < fallbackList.length ? fallbackList[idx] : null);
-    if (match && match.thumbnailUrl) {
+    if (!match || !match.thumbnailUrl) return v;
+    if (!v.thumbnailUrl) {
       return { ...v, thumbnailUrl: match.thumbnailUrl };
+    }
+    if (match.thumbnailUrl !== v.thumbnailUrl && !v.fallbackThumbnailUrl) {
+      return { ...v, fallbackThumbnailUrl: match.thumbnailUrl };
     }
     return v;
   });
@@ -902,8 +904,16 @@ async function resolveTeraBoxStream(surlOrUrl, env = {}, ctx = null, bypassCache
           if (best && best !== data.videos[0]) {
             data.videos = [best, ...data.videos.filter((v) => v !== best)];
           }
-          if (data.videos.some((v) => v && !v.thumbnailUrl)) {
-            const [slList, siList, tbMeta] = await Promise.all([shareListPromise, shortInfoPromise, tbAppPromise]);
+          const needsPrimaryThumb = data.videos.some((v) => v && !v.thumbnailUrl);
+          const metaRace = Promise.all([shareListPromise, shortInfoPromise, tbAppPromise]);
+          const metaResult = needsPrimaryThumb
+            ? await metaRace
+            : await Promise.race([
+                metaRace,
+                new Promise((resolve) => setTimeout(() => resolve(null), 900)),
+              ]);
+          if (Array.isArray(metaResult)) {
+            const [slList, siList, tbMeta] = metaResult;
             const fbList = slList.length > 0 ? slList : (siList.length > 0 ? siList : (tbMeta ? [tbMeta] : []));
             data.videos = mergeVideoMetadataFallbacks(data.videos, fbList);
           }
@@ -1428,17 +1438,21 @@ export default {
         } catch (e) {}
 
         let published = false;
-        // Upload real thumbnail binary via FormData (bypasses Telegram >1KB URL & host block issues)
-        if (thumbUrl && thumbUrl.startsWith("http") && isAllowedProxyUrl(thumbUrl)) {
+        // Upload real thumbnail binary via FormData (primary -> backup; zero fake/random stock photos)
+        const thumbCandidates = [thumbUrl, videoData.fallbackThumbnailUrl || ""].filter(
+          (u, idx, arr) => u && u.startsWith("http") && isAllowedProxyUrl(u) && arr.indexOf(u) === idx
+        );
+        for (const candidateThumb of thumbCandidates) {
+          if (published) break;
           try {
-            const { referer } = getContextualHeaders(thumbUrl);
+            const { referer } = getContextualHeaders(candidateThumb);
             const imgResp = await fetchWithTimeout(
-              thumbUrl,
+              candidateThumb,
               {
                 headers: {
                   "User-Agent": DEFAULT_UA,
                   "Referer": referer,
-                  "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                  "Accept": "image/jpeg,image/png,image/*,*/*;q=0.8",
                 },
               },
               8000
@@ -1460,24 +1474,6 @@ export default {
                 if (upData.ok) published = true;
               }
             }
-          } catch (e) {}
-        }
-
-        if (!published) {
-          try {
-            const fbResp = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: chatId,
-                photo: DEFAULT_POSTER,
-                caption: caption,
-                parse_mode: "HTML",
-                reply_markup: replyMarkup,
-              }),
-            });
-            const fbData = await fbResp.json();
-            if (fbData.ok) published = true;
           } catch (e) {}
         }
 

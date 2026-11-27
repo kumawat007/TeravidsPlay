@@ -320,6 +320,7 @@ def _parse_edge_video_payload(video: Dict[str, Any], source_name: str) -> Option
 
     hls_url = _pick_first_hls_url(video.get("fast_stream_url")) or _pick_first_hls_url(video.get("hls_url"))
     thumb = video.get("thumbnailUrl") or video.get("thumbnail") or video.get("thumb")
+    fallback_thumb = video.get("fallbackThumbnailUrl") or ""
     quality = video.get("quality") or "HD"
     file_id = str(video.get("fileId") or video.get("_id") or "")
     duration = str(video.get("duration") or "")
@@ -333,6 +334,7 @@ def _parse_edge_video_payload(video: Dict[str, Any], source_name: str) -> Option
             "size_bytes": size,
             "size_formatted": format_bytes(size) if size > 0 else "HD Stream",
             "thumbnail": thumb,
+            "fallback_thumbnail": fallback_thumb if fallback_thumb != thumb else "",
             "stream_url": stream_url or hls_url or "",
             "hls_url": hls_url,
             "download_url": stream_url or "",
@@ -364,6 +366,7 @@ def _map_share_list_videos(items: list, source_name: str = "TeraBox Metadata") -
         size = _safe_int(item.get("size"))
         thumbs = item.get("thumbs") or {}
         thumb = thumbs.get("url3") or thumbs.get("url2") or thumbs.get("url1") or thumbs.get("icon")
+        backup_thumb = thumbs.get("url2") or thumbs.get("url1") or ""
         dlink = item.get("dlink") or ""
         mapped.append({
             "success": True,
@@ -372,6 +375,7 @@ def _map_share_list_videos(items: list, source_name: str = "TeraBox Metadata") -
             "size_bytes": size,
             "size_formatted": format_bytes(size) if size > 0 else "HD Stream",
             "thumbnail": thumb,
+            "fallback_thumbnail": backup_thumb if backup_thumb != thumb else "",
             "stream_url": dlink,
             "hls_url": None,
             "download_url": dlink,

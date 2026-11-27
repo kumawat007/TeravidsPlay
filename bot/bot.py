@@ -16,7 +16,9 @@ import hmac
 import json
 import time
 import html
+import shutil
 import logging
+import subprocess
 import threading
 import urllib.parse
 import concurrent.futures
@@ -77,7 +79,6 @@ from terabox_extractor import (
 
 extractor = TeraBoxExtractor()
 
-DEFAULT_POSTER = "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=1200&q=80"
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -193,50 +194,138 @@ def _detect_image_filename(content: bytes) -> Optional[str]:
     return None
 
 
-def download_image_bytes(thumb_url: str, timeout: int = 10) -> Optional[io.BytesIO]:
-    """
-    Downloads real thumbnail bytes with proxy-first routing for blocked/rate-limited hosts
-    (Replit/iTeraPlay/1024tera/TeraBox CDNs/DiskWala) so Telegram gets direct binary photo upload.
-    """
-    if not thumb_url or not thumb_url.startswith("http"):
+def _normalize_photo_bytes(raw_bytes: bytes, content_type: str = "") -> Optional[io.BytesIO]:
+    """Validates raster bytes and converts WebP/non-standard images to JPEG so Telegram sendPhoto never fails."""
+    if not raw_bytes or len(raw_bytes) <= 500 or len(raw_bytes) > 8 * 1024 * 1024:
+        return None
+    ctype = (content_type or "").lower()
+    if "text/html" in ctype or "svg" in ctype or "application/json" in ctype:
         return None
 
-    lower = thumb_url.lower()
+    img_name = _detect_image_filename(raw_bytes)
+    if img_name in ("preview.jpg", "preview.png", "preview.gif"):
+        bio = io.BytesIO(raw_bytes)
+        bio.name = img_name
+        return bio
+
+    if img_name == "preview.webp" or ctype.startswith("image/"):
+        try:
+            from PIL import Image
+            with Image.open(io.BytesIO(raw_bytes)) as im:
+                rgb = im.convert("RGB")
+                out = io.BytesIO()
+                rgb.save(out, format="JPEG", quality=88)
+                out.seek(0)
+                out.name = "preview.jpg"
+                return out
+        except Exception as e:
+            logger.debug(f"Pillow image conversion notice: {e}")
+    return None
+
+
+def _build_proxy_first_attempts(target_url: str, timeout: int, accept: str) -> List[Tuple[str, Dict[str, str], int]]:
+    lower = (target_url or "").lower()
     proxy_first_hosts = (
         "replit.dev", "replit.app", "repl.co", "iteraplay", "qzz.io",
         "1024terabox", "1024tera", "terabox", "dm-data", "diskwala", "bdydns", "baidupcs",
+        "catbox", "archive.org", "r2.dev", "b-cdn.net", "cloudflarestorage",
     )
     use_worker_first = any(h in lower for h in proxy_first_hosts)
-
     attempts: List[Tuple[str, Dict[str, str], int]] = []
-    img_accept = "image/avif,image/webp,image/apng,image/jpeg,image/*,*/*;q=0.8"
-
-    if extractor.worker_url and not thumb_url.startswith(extractor.worker_url):
-        proxied = f"{extractor.worker_url}/?url={urllib.parse.quote(thumb_url, safe='')}"
+    if extractor.worker_url and not target_url.startswith(extractor.worker_url):
+        proxied = f"{extractor.worker_url}/?url={urllib.parse.quote(target_url, safe='')}"
+        direct_hdrs = {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(target_url), "Accept": accept}
+        proxy_hdrs = {"User-Agent": DEFAULT_UA, "Accept": accept}
         if use_worker_first:
-            attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": img_accept}, timeout))
-            attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": img_accept}, 5))
+            attempts.append((proxied, proxy_hdrs, timeout))
+            attempts.append((target_url, direct_hdrs, min(timeout, 6)))
         else:
-            attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": img_accept}, 5))
-            attempts.append((proxied, {"User-Agent": DEFAULT_UA, "Accept": img_accept}, timeout))
+            attempts.append((target_url, direct_hdrs, min(timeout, 6)))
+            attempts.append((proxied, proxy_hdrs, timeout))
     else:
-        attempts.append((thumb_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(thumb_url), "Accept": img_accept}, timeout))
+        attempts.append((target_url, {"User-Agent": DEFAULT_UA, "Referer": _referer_for_url(target_url), "Accept": accept}, timeout))
+    return attempts
 
-    for fetch_url, hdrs, req_timeout in attempts:
-        try:
-            resp = requests.get(fetch_url, headers=hdrs, timeout=req_timeout)
-            ctype = (resp.headers.get("Content-Type") or "").lower()
-            if resp.status_code == 200 and 500 < len(resp.content) <= 8 * 1024 * 1024:
-                if "text/html" in ctype or "svg" in ctype or "application/json" in ctype:
-                    continue
-                img_name = _detect_image_filename(resp.content)
-                if not img_name and not ctype.startswith("image/"):
-                    continue
-                bio = io.BytesIO(resp.content)
-                bio.name = img_name or "preview.jpg"
-                return bio
-        except Exception as e:
-            logger.debug(f"Thumbnail fetch notice for {fetch_url[:80]}: {e}")
+
+def download_image_bytes(thumb_url: str, timeout: int = 10, fallback_url: str = "") -> Optional[io.BytesIO]:
+    """
+    Downloads real thumbnail bytes with proxy-first routing and backup URL support,
+    converting WebP/unusual formats cleanly to JPEG for reliable Telegram binary upload.
+    """
+    img_accept = "image/avif,image/webp,image/apng,image/jpeg,image/*,*/*;q=0.8"
+    candidate_urls = [u for u in (thumb_url, fallback_url) if u and u.startswith("http")]
+    if not candidate_urls:
+        return None
+
+    for candidate in candidate_urls:
+        for fetch_url, hdrs, req_timeout in _build_proxy_first_attempts(candidate, timeout, img_accept):
+            try:
+                resp = requests.get(fetch_url, headers=hdrs, timeout=req_timeout)
+                if resp.status_code == 200:
+                    bio = _normalize_photo_bytes(resp.content, resp.headers.get("Content-Type", ""))
+                    if bio:
+                        return bio
+            except Exception as e:
+                logger.debug(f"Thumbnail fetch notice for {fetch_url[:80]}: {e}")
+    return None
+
+
+def _get_ffmpeg_exe() -> Optional[str]:
+    sys_ffmpeg = shutil.which("ffmpeg")
+    if sys_ffmpeg:
+        return sys_ffmpeg
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def extract_video_frame_bytes(stream_url: str, hls_url: str = "") -> Optional[io.BytesIO]:
+    """
+    Extracts a real JPEG preview frame directly from the video stream via HTTP Range seeking.
+    Never generates fake/random stock photos; returns None if extraction is unsupported or times out.
+    """
+    media_url = stream_url or hls_url
+    if not media_url or not media_url.startswith("http"):
+        return None
+    ffmpeg_exe = _get_ffmpeg_exe()
+    if not ffmpeg_exe:
+        return None
+
+    lower = media_url.lower()
+    use_proxy = bool(extractor.worker_url) and any(
+        h in lower for h in ("catbox", "replit.dev", "replit.app", "iteraplay", "qzz.io", "1024tera", "terabox", "archive.org")
+    ) and not media_url.startswith(extractor.worker_url)
+    target_urls = []
+    if use_proxy:
+        target_urls.append(f"{extractor.worker_url}/?url={urllib.parse.quote(media_url, safe='')}")
+    target_urls.append(media_url)
+
+    for cand_url in target_urls:
+        for seek_sec in ("3", "0"):
+            try:
+                cmd = [
+                    ffmpeg_exe,
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-user_agent", DEFAULT_UA,
+                    "-ss", seek_sec,
+                    "-i", cand_url,
+                    "-frames:v", "1",
+                    "-vf", "scale='min(1280,iw)':-2",
+                    "-f", "image2pipe",
+                    "-vcodec", "mjpeg",
+                    "-q:v", "3",
+                    "pipe:1",
+                ]
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=12)
+                if proc.returncode == 0 and proc.stdout and len(proc.stdout) > 500:
+                    bio = _normalize_photo_bytes(proc.stdout, "image/jpeg")
+                    if bio:
+                        return bio
+            except Exception as e:
+                logger.debug(f"FFmpeg frame capture notice ({seek_sec}s): {e}")
     return None
 
 
@@ -314,75 +403,92 @@ def publish_card(
     thumb_url: str,
     markup: types.InlineKeyboardMarkup,
     prefetched_bio: Optional[io.BytesIO] = None,
+    fallback_thumb: str = "",
+    stream_url: str = "",
+    allow_frame_capture: bool = True,
 ):
-    """Sends the formatted video card with guaranteed binary photo upload or clean fallback."""
+    """Sends formatted video card with REAL video thumbnail or captured frame (zero random stock photos)."""
     safe_title = html.escape(title[:120])
     fallback_q = quality if (quality and quality not in ("Unknown", "")) else "HD Stream"
     size_label = size if (size and size not in ("0 B", "Unknown Size", "HD Stream")) else fallback_q
     safe_size = html.escape(str(size_label))
     caption = f"🎬 <b>{safe_title}</b>\n\n📦 <b>Size:</b> {safe_size}"
 
-    # 1. Binary photo stream (either pre-fetched concurrently or downloaded now)
+    # 1. Real binary thumbnail (prefetched or downloaded via proxy/backup URL)
     img_bio = prefetched_bio
-    if img_bio is not None:
-        img_bio.seek(0)
-    elif thumb_url and thumb_url.startswith("http"):
-        img_bio = download_image_bytes(thumb_url)
-
-    if img_bio:
-        try:
-            return _send_telegram_with_retry(
-                bot.send_photo,
-                chat_id=chat_id,
-                photo=img_bio,
-                caption=caption,
-                reply_markup=markup,
-            )
-        except Exception as e:
-            logger.warning(f"Direct photo stream upload failed for {chat_id}: {e}")
-
-    # 2. Try URL delivery if short enough
-    if thumb_url and thumb_url.startswith("http") and len(thumb_url) < 900:
-        try:
-            return _send_telegram_with_retry(
-                bot.send_photo,
-                chat_id=chat_id,
-                photo=thumb_url,
-                caption=caption,
-                reply_markup=markup,
-            )
-        except Exception as e:
-            logger.warning(f"Direct URL photo delivery failed for {chat_id}: {e}")
-
-    # 3. High-res fallback poster
+    owns_bio = False
     try:
+        if img_bio is not None:
+            img_bio.seek(0)
+        elif thumb_url or fallback_thumb:
+            img_bio = download_image_bytes(thumb_url, fallback_url=fallback_thumb)
+            owns_bio = img_bio is not None
+
+        # 2. Extract real video frame if CDN provided no thumbnail (e.g. Catbox / direct MP4 links)
+        if img_bio is None and allow_frame_capture and stream_url:
+            img_bio = extract_video_frame_bytes(stream_url)
+            owns_bio = img_bio is not None
+
+        if img_bio:
+            try:
+                return _send_telegram_with_retry(
+                    bot.send_photo,
+                    chat_id=chat_id,
+                    photo=img_bio,
+                    caption=caption,
+                    reply_markup=markup,
+                )
+            except Exception as e:
+                logger.warning(f"Real photo upload failed for {chat_id}: {e}")
+
+        # 3. Real direct URL photo delivery if short enough (no unrelated random stock images)
+        for real_u in (thumb_url, fallback_thumb):
+            if real_u and real_u.startswith("http") and len(real_u) < 900:
+                try:
+                    return _send_telegram_with_retry(
+                        bot.send_photo,
+                        chat_id=chat_id,
+                        photo=real_u,
+                        caption=caption,
+                        reply_markup=markup,
+                    )
+                except Exception as e:
+                    logger.warning(f"Direct URL photo delivery failed for {chat_id}: {e}")
+
+        # 4. Clean watch-card message fallback (NEVER show fake/random stock photos)
         return _send_telegram_with_retry(
-            bot.send_photo,
+            bot.send_message,
             chat_id=chat_id,
-            photo=DEFAULT_POSTER,
-            caption=caption,
+            text=caption,
             reply_markup=markup,
         )
-    except Exception as e:
-        logger.warning(f"Default poster photo delivery failed for {chat_id}: {e}")
-
-    # 4. Text fallback
-    return _send_telegram_with_retry(
-        bot.send_message,
-        chat_id=chat_id,
-        text=caption,
-        reply_markup=markup,
-    )
+    finally:
+        if owns_bio and img_bio is not None:
+            try:
+                img_bio.close()
+            except Exception:
+                pass
 
 
 def _prefetch_thumbnails(videos: List[Dict[str, Any]]) -> Dict[int, Optional[io.BytesIO]]:
-    """Concurrently fetches thumbnails for multi-video folders via Worker proxy."""
+    """Concurrently fetches real thumbnails (with backup URL & small-batch frame fallback) for folders."""
     results: Dict[int, Optional[io.BytesIO]] = {}
-    targets = [(i, v.get("thumbnail")) for i, v in enumerate(videos) if v.get("thumbnail")]
+    targets = [
+        (i, v.get("thumbnail") or "", v.get("fallback_thumbnail") or "", v.get("stream_url") or v.get("hls_url") or "")
+        for i, v in enumerate(videos)
+        if v.get("thumbnail") or v.get("fallback_thumbnail") or (len(videos) <= 3 and (v.get("stream_url") or v.get("hls_url")))
+    ]
     if not targets:
         return results
+
+    def _fetch_one(t_url: str, b_url: str, s_url: str) -> Optional[io.BytesIO]:
+        bio = download_image_bytes(t_url, fallback_url=b_url)
+        if bio is None and len(videos) <= 3 and s_url:
+            bio = extract_video_frame_bytes(s_url)
+        return bio
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(targets))) as ex:
-        fut_map = {ex.submit(download_image_bytes, url): idx for idx, url in targets}
+        fut_map = {ex.submit(_fetch_one, t_u, b_u, s_u): idx for idx, t_u, b_u, s_u in targets}
         for fut in concurrent.futures.as_completed(fut_map):
             idx = fut_map[fut]
             try:
@@ -395,7 +501,7 @@ def _prefetch_thumbnails(videos: List[Dict[str, Any]]) -> Dict[int, Optional[io.
 def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "") -> int:
     """
     Publishes either a single video card OR a Playlist Summary + all individual folder cards
-    (with thumbnails, titles, and sizes). Returns number of cards published.
+    (with real thumbnails/frames, titles, and sizes). Returns number of cards published.
     """
     surl = data.get("surl") or ""
     dir_path = data.get("dir_path") or ""
@@ -414,8 +520,9 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
         title = raw_title if raw_title not in ("TeraBox Video", "TeraBox Video Stream") else (title_hint or raw_title or "TeraBox Video")
         size = vid.get("size_formatted", "")
         quality = vid.get("quality", "HD")
-        stream_url = vid.get("stream_url", "")
+        stream_url = vid.get("stream_url") or vid.get("hls_url") or ""
         thumb_url = vid.get("thumbnail") or ""
+        backup_thumb = vid.get("fallback_thumbnail") or ""
         fid = vid.get("file_id") or ""
 
         markup, _ = build_channel_markup(
@@ -423,11 +530,21 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
             title=title,
             size=size,
             surl=surl,
-            thumb=thumb_url,
+            thumb=thumb_url or backup_thumb,
             dir_path=dir_path,
             file_id=fid,
         )
-        publish_card(chat_id, title, size, quality, thumb_url, markup)
+        publish_card(
+            chat_id,
+            title,
+            size,
+            quality,
+            thumb_url,
+            markup,
+            fallback_thumb=backup_thumb,
+            stream_url=stream_url,
+            allow_frame_capture=True,
+        )
         return 1
 
     # Multi-video folder collection!
@@ -439,7 +556,7 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
         folder_label = dir_path.strip("/").split("/")[-1] if dir_path else ""
         summary_title = f"📁 {folder_label or 'Collection'} ({total} Videos)"
         summary_size = f"{format_bytes(total_bytes)} Total ({total} Files)" if total_bytes > 0 else f"{total} Videos (Playlist)"
-        lead_thumb = next((v.get("thumbnail") for v in publish_subset if v.get("thumbnail")), "")
+        lead_thumb = next((v.get("thumbnail") or v.get("fallback_thumbnail") for v in publish_subset if v.get("thumbnail") or v.get("fallback_thumbnail")), "")
 
         summary_markup, _ = build_channel_markup(
             stream_url=publish_subset[0].get("stream_url", ""),
@@ -459,6 +576,9 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
             lead_thumb,
             summary_markup,
             prefetched_bio=thumbs_cache.get(0),
+            fallback_thumb=publish_subset[0].get("fallback_thumbnail") or "",
+            stream_url=publish_subset[0].get("stream_url", ""),
+            allow_frame_capture=len(publish_subset) <= 3,
         )
 
         sent_count = 1
@@ -468,8 +588,9 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
             item_title = f"[{i + 1}/{total}] {raw_title}"
             item_size = vid.get("size_formatted", "")
             item_quality = vid.get("quality", "HD")
-            item_stream = vid.get("stream_url", "")
+            item_stream = vid.get("stream_url") or vid.get("hls_url") or ""
             item_thumb = vid.get("thumbnail") or ""
+            item_backup = vid.get("fallback_thumbnail") or ""
             item_fid = vid.get("file_id") or ""
 
             item_markup, _ = build_channel_markup(
@@ -477,7 +598,7 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
                 title=raw_title,
                 size=item_size,
                 surl=surl,
-                thumb=item_thumb,
+                thumb=item_thumb or item_backup,
                 dir_path=dir_path,
                 idx=i,
                 file_id=item_fid,
@@ -492,6 +613,9 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
                 item_thumb,
                 item_markup,
                 prefetched_bio=thumbs_cache.get(i),
+                fallback_thumb=item_backup,
+                stream_url=item_stream,
+                allow_frame_capture=len(publish_subset) <= 3,
             )
             sent_count += 1
 
