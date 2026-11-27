@@ -13,6 +13,8 @@ import re
 import io
 import sys
 import hmac
+import hashlib
+import base64
 import json
 import time
 import html
@@ -38,8 +40,11 @@ dotenv_path = os.path.join(bot_dir, ".env")
 load_dotenv(dotenv_path)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-PLAYER_URL = os.getenv("PLAYER_URL", "").rstrip("/")
+PLAYER_URL = (os.getenv("PLAYER_URL") or "https://teravidsplayer.vercel.app").rstrip("/")
 TARGET_CHANNEL_ID = os.getenv("TARGET_CHANNEL_ID", "").strip()
+MINI_APP_NAME = os.getenv("MINI_APP_NAME", "").strip()
+BOT_USERNAME_ENV = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+BOT_USERNAME = BOT_USERNAME_ENV
 ADMIN_USER_IDS = {
     x.strip() for x in os.getenv("ADMIN_USER_IDS", "").split(",") if x.strip()
 }
@@ -331,6 +336,133 @@ def extract_video_frame_bytes(stream_url: str, hls_url: str = "") -> Optional[io
     return None
 
 
+def _b64url_encode(raw_str: str) -> str:
+    return base64.urlsafe_b64encode((raw_str or "").encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _b64url_decode(b64_str: str) -> str:
+    s = (b64_str or "").strip()
+    pad = "=" * ((4 - len(s) % 4) % 4)
+    return base64.urlsafe_b64decode(s + pad).decode("utf-8")
+
+
+def encode_compact_start_token(
+    surl: str = "",
+    dir_path: str = "",
+    idx: Optional[int] = None,
+    stream_url: str = "",
+) -> str:
+    """Encodes video parameters into a <=64-char [A-Za-z0-9_-] Telegram start/startapp payload."""
+    idx_num = idx if (idx is not None and idx > 0) else 0
+    if surl and re.fullmatch(r"[A-Za-z0-9_-]{6,50}", surl):
+        clean_dir = (dir_path or "").strip().lstrip("/")
+        if clean_dir:
+            b64_dir = _b64url_encode(clean_dir)
+            tok = f"f{len(surl):02d}{idx_num}_{surl}{b64_dir}"
+            if len(tok) <= 64:
+                return tok
+        if idx_num > 0:
+            tok = f"i_{idx_num}_{surl}"
+            if len(tok) <= 64:
+                return tok
+        tok = f"w_{surl}"
+        if len(tok) <= 64:
+            return tok
+
+    if stream_url:
+        try:
+            u = urllib.parse.urlparse(stream_url)
+            fname = (u.path or "").lstrip("/")
+            if u.hostname == "files.catbox.moe" and fname:
+                tok = f"c_{_b64url_encode(fname)}"
+                if len(tok) <= 64:
+                    return tok
+            if u.hostname == "litter.catbox.moe" and fname:
+                tok = f"l_{_b64url_encode(fname)}"
+                if len(tok) <= 64:
+                    return tok
+            tok = f"u_{_b64url_encode(stream_url)}"
+            if len(tok) <= 64:
+                return tok
+        except Exception:
+            pass
+    return "open"
+
+
+def decode_compact_start_token(payload: str) -> Dict[str, Any]:
+    """Decodes a compact start/startapp payload cleanly into surl/dir_path/idx/stream_url."""
+    tok = (payload or "").strip()
+    if not tok or tok == "open":
+        return {"open": True}
+    try:
+        if tok.startswith("w_"):
+            return {"surl": tok[2:]}
+        if tok.startswith("i_"):
+            parts = tok.split("_", 2)
+            if len(parts) == 3 and parts[1].isdigit():
+                return {"surl": parts[2], "idx": int(parts[1])}
+        if tok.startswith("f"):
+            m_f = re.fullmatch(r"f(\d{2})(\d+)_(.+)", tok)
+            if m_f:
+                surl_len = int(m_f.group(1))
+                idx_val = int(m_f.group(2))
+                rest = m_f.group(3)
+                surl_val = rest[:surl_len]
+                dir_b64 = rest[surl_len:]
+                dir_val = "/" + _b64url_decode(dir_b64).lstrip("/") if dir_b64 else ""
+                return {"surl": surl_val, "dir_path": dir_val, "idx": idx_val}
+        if tok.startswith("c_"):
+            return {"stream_url": f"https://files.catbox.moe/{_b64url_decode(tok[2:]).lstrip('/')}"}
+        if tok.startswith("l_"):
+            return {"stream_url": f"https://litter.catbox.moe/{_b64url_decode(tok[2:]).lstrip('/')}"}
+        if tok.startswith("u_"):
+            u = _b64url_decode(tok[2:])
+            if u.startswith("https://"):
+                return {"stream_url": u}
+        if re.fullmatch(r"[A-Za-z0-9_-]{12,50}", tok):
+            return {"surl": tok}
+    except Exception:
+        pass
+    return {"open": True}
+
+
+def get_resolved_bot_username() -> str:
+    global BOT_USERNAME
+    if BOT_USERNAME:
+        return BOT_USERNAME
+    if BOT_USERNAME_ENV:
+        BOT_USERNAME = BOT_USERNAME_ENV
+        return BOT_USERNAME
+    try:
+        BOT_USERNAME = bot.get_me().username or "Teravidsplayerbot"
+    except Exception:
+        BOT_USERNAME = "Teravidsplayerbot"
+    return BOT_USERNAME
+
+
+def build_miniapp_deep_link(compact_token: str) -> str:
+    bot_user = get_resolved_bot_username().lstrip("@")
+    tok = (compact_token or "open")[:64]
+    if MINI_APP_NAME:
+        return f"https://t.me/{bot_user}/{MINI_APP_NAME}?startapp={urllib.parse.quote(tok, safe='')}"
+    return f"https://t.me/{bot_user}?start={urllib.parse.quote(tok, safe='')}"
+
+
+def build_player_url_from_compact_token(payload: str) -> str:
+    info = decode_compact_start_token(payload)
+    base = PLAYER_URL or "https://teravidsplayer.vercel.app"
+    if info.get("surl"):
+        params = [f"v={urllib.parse.quote(info['surl'], safe='')}"]
+        if info.get("dir_path"):
+            params.append(f"path={urllib.parse.quote(info['dir_path'], safe='')}")
+        if info.get("idx", 0) > 0:
+            params.append(f"idx={info['idx']}")
+        return f"{base}/?{'&'.join(params)}"
+    if info.get("stream_url"):
+        return f"{base}/?stream={urllib.parse.quote(info['stream_url'], safe='')}"
+    return f"{base}/"
+
+
 def build_channel_markup(
     stream_url: str,
     title: str,
@@ -342,8 +474,9 @@ def build_channel_markup(
     file_id: str = "",
     playlist_count: int = 1,
     is_summary: bool = False,
+    for_channel: bool = True,
 ) -> tuple[types.InlineKeyboardMarkup, str]:
-    """Builds direct-to-player inline buttons strictly keeping users on TeravidsPlay & Telegram."""
+    """Builds Mini App buttons (web_app in private DMs; Bot/MiniApp deep-link URL in channels)."""
     markup = types.InlineKeyboardMarkup(row_width=1)
 
     if PLAYER_URL and surl:
@@ -354,11 +487,10 @@ def build_channel_markup(
             params.append("list=1")
         if idx is not None and idx >= 0 and not is_summary:
             params.append(f"idx={idx}")
-        params.append("tg=1")
         player_link = f"{PLAYER_URL}/?{'&'.join(params)}"
     elif PLAYER_URL and stream_url:
         encoded_stream = urllib.parse.quote(stream_url, safe="")
-        params = [f"stream={encoded_stream}", "tg=1"]
+        params = [f"stream={encoded_stream}"]
         if title:
             params.append(f"title={urllib.parse.quote(title)}")
         if size:
@@ -374,9 +506,21 @@ def build_channel_markup(
     elif idx is not None and playlist_count > 1:
         watch_label = f"🟢 ▶️ WATCH PART {idx + 1}/{playlist_count} (HD) 🍿"
     else:
-        watch_label = "🟢 ▶️ WATCH ONLINE (FULL HD) 🍿"
+        watch_label = "🟢 ▶️ WATCH IN MINI APP (HD) 🍿"
 
-    markup.add(types.InlineKeyboardButton(text=watch_label, url=player_link))
+    if not for_channel and player_link.startswith("https://"):
+        markup.add(types.InlineKeyboardButton(text=watch_label, web_app=types.WebAppInfo(url=player_link)))
+    else:
+        compact_tok = encode_compact_start_token(
+            surl=surl,
+            dir_path=dir_path,
+            idx=0 if is_summary else idx,
+            stream_url=stream_url,
+        )
+        deep_link = build_miniapp_deep_link(compact_tok)
+        markup.add(types.InlineKeyboardButton(text=watch_label, url=deep_link))
+        player_link = deep_link
+
     return markup, player_link
 
 
@@ -516,6 +660,9 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
     if total == 0:
         return 0
 
+    chat_str = str(chat_id).strip()
+    is_channel_chat = chat_str.startswith("@") or chat_str.startswith("-")
+
     if total == 1:
         vid = videos[0]
         raw_title = vid.get("title") or ""
@@ -535,6 +682,7 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
             thumb=thumb_url or backup_thumb,
             dir_path=dir_path,
             file_id=fid,
+            for_channel=is_channel_chat,
         )
         publish_card(
             chat_id,
@@ -561,7 +709,7 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
         lead_thumb = next((v.get("thumbnail") or v.get("fallback_thumbnail") for v in publish_subset if v.get("thumbnail") or v.get("fallback_thumbnail")), "")
 
         summary_markup, _ = build_channel_markup(
-            stream_url=publish_subset[0].get("stream_url", ""),
+            stream_url=publish_subset[0].get("stream_url") or publish_subset[0].get("hls_url") or "",
             title=summary_title,
             size=summary_size,
             surl=surl,
@@ -569,6 +717,7 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
             dir_path=dir_path,
             playlist_count=total,
             is_summary=True,
+            for_channel=is_channel_chat,
         )
         publish_card(
             chat_id,
@@ -606,6 +755,7 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
                 file_id=item_fid,
                 playlist_count=total,
                 is_summary=False,
+                for_channel=is_channel_chat,
             )
             publish_card(
                 chat_id,
@@ -752,36 +902,56 @@ FORCE_SUB_TEXT = (
 )
 
 
-def get_force_sub_markup() -> types.InlineKeyboardMarkup:
-    """Generates the modern 2-step inline keyboard for Force Subscription."""
+def get_force_sub_markup(pending_payload: str = "") -> types.InlineKeyboardMarkup:
+    """Generates the modern 2-step inline keyboard for Force Subscription, preserving deep-link payload."""
     markup = types.InlineKeyboardMarkup(row_width=1)
     channel_url = get_channel_invite_link()
     btn_join = types.InlineKeyboardButton("📢 1. Join Official Channel ✨", url=channel_url)
-    btn_verify = types.InlineKeyboardButton("🔄 2. Verify Membership 🚀", callback_data="verify_fsub")
+    cb_data = f"vf:{pending_payload}" if (pending_payload and len(pending_payload) <= 60) else "verify_fsub"
+    btn_verify = types.InlineKeyboardButton("🔄 2. Verify Membership 🚀", callback_data=cb_data)
     markup.add(btn_join, btn_verify)
     return markup
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "verify_fsub")
+@bot.callback_query_handler(func=lambda call: (call.data or "") == "verify_fsub" or (call.data or "").startswith(("verify_fsub:", "vf:")))
 def handle_verify_fsub(call: types.CallbackQuery):
-    """Handles the 1-tap verification button when a user claims they have joined."""
+    """Handles the 1-tap verification button and immediately opens the requested Mini App video."""
     user_id = call.from_user.id
+    raw_cb = call.data or ""
+    pending_payload = raw_cb.split(":", 1)[1].strip() if ":" in raw_cb else ""
+
     if is_user_subscribed(user_id):
         try:
             bot.answer_callback_query(call.id, "✅ Verified! Welcome to TeravidsPlay 🚀", show_alert=False)
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=(
+            unlocked_markup = types.InlineKeyboardMarkup(row_width=1)
+            if pending_payload and pending_payload != "open":
+                mini_url = build_player_url_from_compact_token(pending_payload)
+                unlocked_markup.add(
+                    types.InlineKeyboardButton("🟢 ▶️ WATCH IN MINI APP (HD) 🍿", web_app=types.WebAppInfo(url=mini_url))
+                )
+                msg_text = (
+                    "🎉 <b>Channel Membership Verified!</b>\n\n"
+                    "Tap the button below to launch your <b>1080p Ad-Free Video</b> inside the Telegram Mini App! 🍿"
+                )
+            else:
+                if PLAYER_URL.startswith("https://"):
+                    unlocked_markup.add(
+                        types.InlineKeyboardButton("📱 Launch TeravidsPlay Mini App", web_app=types.WebAppInfo(url=f"{PLAYER_URL}/"))
+                    )
+                msg_text = (
                     "🎉 <b>Channel Membership Verified!</b>\n\n"
                     "Welcome to <b>TeravidsPlay</b> 🚀\n"
                     "Your access has been successfully unlocked.\n\n"
                     "🎬 <b>How to Watch:</b>\n"
-                    "• Send any TeraBox video or folder link here in DM.\n"
-                    "• Enjoy fast Full HD streaming with Zero Ads!\n\n"
-                    "📢 Browse trending videos on <b>@teravidsplayer</b>"
-                ),
+                    "• Tap videos in <b>@teravidsplayer</b> or launch the Mini App below.\n"
+                    "• Enjoy fast Full HD streaming with Zero Ads!"
+                )
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=msg_text,
                 parse_mode="HTML",
+                reply_markup=unlocked_markup if unlocked_markup.keyboard else None,
             )
         except Exception as e:
             logger.warning(f"Error editing verify message: {e}")
@@ -802,35 +972,57 @@ def handle_verify_fsub(call: types.CallbackQuery):
 @bot.message_handler(commands=["start", "help"])
 def handle_start(message: types.Message):
     uid = message.from_user.id if message.from_user else None
+    cmd_parts = (message.text or "").strip().split(maxsplit=1)
+    start_payload = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+
     if message.chat.type == "private" and uid is not None and not is_user_subscribed(uid):
         _reply_or_send(
             message,
             FORCE_SUB_TEXT,
-            reply_markup=get_force_sub_markup(),
+            reply_markup=get_force_sub_markup(start_payload),
             parse_mode="HTML",
         )
         return
 
+    if start_payload and start_payload != "open":
+        mini_url = build_player_url_from_compact_token(start_payload)
+        play_markup = types.InlineKeyboardMarkup(row_width=1)
+        play_markup.add(
+            types.InlineKeyboardButton("🟢 ▶️ WATCH IN MINI APP (HD) 🍿", web_app=types.WebAppInfo(url=mini_url))
+        )
+        play_markup.add(
+            types.InlineKeyboardButton("📢 Official Channel (@teravidsplayer)", url=get_channel_invite_link())
+        )
+        _reply_or_send(
+            message,
+            "🎬 <b>Ready to Stream!</b>\n\nMembership verified for <b>@teravidsplayer</b>. Tap below to open the ad-free <b>1080p Mini App Player</b>:",
+            reply_markup=play_markup,
+            parse_mode="HTML",
+        )
+        return
+
+    welcome_markup = types.InlineKeyboardMarkup(row_width=1)
+    if PLAYER_URL.startswith("https://"):
+        welcome_markup.add(
+            types.InlineKeyboardButton("📱 Launch TeravidsPlay Mini App", web_app=types.WebAppInfo(url=f"{PLAYER_URL}/"))
+        )
+    welcome_markup.add(
+        types.InlineKeyboardButton("📢 Join Official Channel (@teravidsplayer)", url=get_channel_invite_link())
+    )
+
     welcome_text = (
         "📢 <b>Welcome to TeravidsPlay Bot!</b>\n\n"
-        "Send me any TeraBox video or multi-video folder link here, or post it in <b>@teravidsplayer</b>.\n\n"
+        "Watch exclusive Full HD 1080p streams inside our official <b>Telegram Mini App</b> or post links in <b>@teravidsplayer</b>.\n\n"
         "<b>Features:</b>\n"
         "• Supports single videos AND multi-video folder playlists.\n"
         "• Long-press 2X & 4X speed controls.\n"
         "• Web Audio API 300% volume booster.\n"
         "• Double-tap 10s seek & Auto-resume.\n"
-        "• Zero Ads & Zero Popups — everything plays inside TeravidsPlay!\n\n"
+        "• Zero Ads & Zero Popups — everything plays inside Telegram Mini App!\n\n"
         f"• <b>Target Channel:</b> <code>{html.escape(TARGET_CHANNEL_ID or 'Not Set')}</code>\n"
         "• <b>Status Check:</b> /status"
     )
-    _reply_or_send(message, welcome_text)
-
-
-BOT_USERNAME = ""
-try:
-    BOT_USERNAME = bot.get_me().username or ""
-except Exception:
-    BOT_USERNAME = ""
+    _reply_or_send(message, welcome_text, reply_markup=welcome_markup)
 
 
 @bot.message_handler(commands=["status"])
@@ -845,13 +1037,7 @@ def handle_status(message: types.Message):
         )
         return
 
-    global BOT_USERNAME
-    if not BOT_USERNAME:
-        try:
-            BOT_USERNAME = bot.get_me().username or "Teravidsplayerbot"
-        except Exception:
-            BOT_USERNAME = "Teravidsplayerbot"
-
+    bot_uname = get_resolved_bot_username()
     safe_player = html.escape(PLAYER_URL) if PLAYER_URL else ""
     safe_channel = html.escape(TARGET_CHANNEL_ID or "Not Set")
     status_text = (
@@ -859,7 +1045,7 @@ def handle_status(message: types.Message):
         "• <b>Engine:</b> 🚀 Multi-Video Edge + Folder Resolver (Active)\n"
         f"• <b>Web Player:</b> {'✅ ' + safe_player if safe_player else '⚠️ Not Set'}\n"
         f"• <b>Target Channel:</b> <code>{safe_channel}</code>\n"
-        f"• <b>Bot Username:</b> @{html.escape(BOT_USERNAME)}\n"
+        f"• <b>Bot Username:</b> @{html.escape(bot_uname)}\n"
     )
     _reply_or_send(message, status_text)
 
@@ -963,9 +1149,58 @@ def handle_private_post(message: types.Message):
                 pass
 
 
+def verify_telegram_init_data(init_data_str: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    """Cryptographically verifies Telegram WebApp initData HMAC-SHA256 & 24h auth_date freshness."""
+    if not init_data_str or not BOT_TOKEN:
+        return False, None, "missing_credentials"
+    try:
+        pairs = urllib.parse.parse_qsl(init_data_str, keep_blank_values=True)
+        incoming_hash = ""
+        auth_date = 0
+        user_raw = ""
+        filtered: List[Tuple[str, str]] = []
+        for k, v in pairs:
+            if k == "hash":
+                incoming_hash = v.lower()
+            else:
+                if k == "auth_date" and v.isdigit():
+                    auth_date = int(v)
+                elif k == "user":
+                    user_raw = v
+                filtered.append((k, v))
+
+        if not incoming_hash or not auth_date:
+            return False, None, "invalid_payload"
+
+        now_sec = int(time.time())
+        if now_sec - auth_date > 86400 or auth_date - now_sec > 300:
+            return False, None, "expired_init_data"
+
+        filtered.sort(key=lambda item: item[0])
+        data_check_string = "\n".join(f"{k}={v}" for k, v in filtered)
+
+        secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
+        calculated_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+
+        if not hmac.compare_digest(calculated_hash, incoming_hash):
+            return False, None, "invalid_signature"
+
+        user_obj = json.loads(user_raw) if user_raw else None
+        if not isinstance(user_obj, dict) or not user_obj.get("id"):
+            return False, None, "missing_user"
+
+        return True, {
+            "id": user_obj["id"],
+            "first_name": user_obj.get("first_name", ""),
+            "username": user_obj.get("username", ""),
+        }, ""
+    except Exception:
+        return False, None, "verification_error"
+
+
 class HealthCheckHandler(BaseHTTPRequestHandler):
     """
-    Production-grade cloud health check server.
+    Production-grade cloud health check & Telegram Mini App verification fallback server.
     Secured against SSRF and unauthorized public execution.
     """
 
@@ -973,9 +1208,55 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(payload)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.end_headers()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path != "/verify-member":
+            self._send_json_bytes(404, b'{"error":"Not Found"}')
+            return
+        try:
+            length = min(int(self.headers.get("Content-Length", "0") or "0"), 65536)
+            raw_body = self.rfile.read(length) if length > 0 else b"{}"
+            body = json.loads(raw_body.decode("utf-8"))
+            init_data = body.get("initData", "") if isinstance(body, dict) else ""
+            ok, user_data, reason = verify_telegram_init_data(init_data)
+            target_chan = TARGET_CHANNEL_ID or "@teravidsplayer"
+            if not ok or not user_data:
+                self._send_json_bytes(403, json.dumps({
+                    "verified": False,
+                    "member": False,
+                    "channel": target_chan,
+                    "reason": reason,
+                }).encode("utf-8"))
+                return
+
+            is_member = is_user_subscribed(int(user_data["id"]))
+            self._send_json_bytes(200, json.dumps({
+                "verified": True,
+                "member": bool(is_member),
+                "channel": target_chan,
+                "user": user_data,
+            }).encode("utf-8"))
+        except Exception as e:
+            self._send_json_bytes(500, json.dumps({
+                "verified": False,
+                "member": False,
+                "reason": "server_error",
+                "message": str(e),
+            }).encode("utf-8"))
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1074,6 +1355,19 @@ if __name__ == "__main__":
     print("=" * 60 + "\n")
 
     start_health_server()
+
+    if PLAYER_URL.startswith("https://"):
+        try:
+            bot.set_chat_menu_button(
+                menu_button=types.MenuButtonWebApp(
+                    type="web_app",
+                    text="🎬 Open Player",
+                    web_app=types.WebAppInfo(url=f"{PLAYER_URL}/"),
+                )
+            )
+            logger.info("Configured Telegram Chat Menu Button -> Mini App")
+        except Exception as e:
+            logger.debug(f"Menu button notice: {e}")
 
     t_keepalive = threading.Thread(target=keep_alive_loop, daemon=True)
     t_keepalive.start()

@@ -1192,6 +1192,161 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl) {
   });
 }
 
+const DEFAULT_BOT_USERNAME = "Teravidsplayerbot";
+const DEFAULT_TARGET_CHANNEL = "@teravidsplayer";
+
+function toBase64Url(str) {
+  const bytes = new TextEncoder().encode(String(str || ""));
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function encodeCompactStartToken({ surl = "", dirPath = "", idx = 0, streamUrl = "" } = {}) {
+  const idxNum = Number.isFinite(Number(idx)) && Number(idx) > 0 ? Math.floor(Number(idx)) : 0;
+  if (surl && /^[a-zA-Z0-9_-]{6,50}$/.test(surl)) {
+    const cleanDir = (dirPath || "").trim().replace(/^\/+/, "");
+    if (cleanDir) {
+      const b64Dir = toBase64Url(cleanDir);
+      const folderTok = `f${String(surl.length).padStart(2, "0")}${idxNum}_${surl}${b64Dir}`;
+      if (folderTok.length <= 64) return folderTok;
+    }
+    if (idxNum > 0) {
+      const idxTok = `i_${idxNum}_${surl}`;
+      if (idxTok.length <= 64) return idxTok;
+    }
+    const baseTok = `w_${surl}`;
+    if (baseTok.length <= 64) return baseTok;
+  }
+  if (streamUrl) {
+    try {
+      const u = new URL(streamUrl);
+      const fname = u.pathname.replace(/^\/+/, "");
+      if (u.hostname === "files.catbox.moe" && fname) {
+        const cTok = `c_${toBase64Url(fname)}`;
+        if (cTok.length <= 64) return cTok;
+      }
+      if (u.hostname === "litter.catbox.moe" && fname) {
+        const lTok = `l_${toBase64Url(fname)}`;
+        if (lTok.length <= 64) return lTok;
+      }
+      const uTok = `u_${toBase64Url(streamUrl)}`;
+      if (uTok.length <= 64) return uTok;
+    } catch (e) {}
+  }
+  return "open";
+}
+
+function buildMiniAppDeepLink(compactToken, env = {}) {
+  const botUser = (env.BOT_USERNAME || DEFAULT_BOT_USERNAME).replace(/^@/, "");
+  const miniApp = (env.MINI_APP_NAME || "").trim();
+  const tok = (compactToken || "open").slice(0, 64);
+  if (miniApp) {
+    return `https://t.me/${botUser}/${miniApp}?startapp=${encodeURIComponent(tok)}`;
+  }
+  return `https://t.me/${botUser}?start=${encodeURIComponent(tok)}`;
+}
+
+function timingSafeEqualHex(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length || a.length === 0) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+async function verifyTelegramInitData(initDataString, botToken) {
+  if (!initDataString || !botToken) return { ok: false, reason: "missing_credentials" };
+  try {
+    const params = new URLSearchParams(initDataString);
+    const incomingHash = (params.get("hash") || "").toLowerCase();
+    const authDate = Number(params.get("auth_date") || 0);
+    if (!incomingHash || !authDate) return { ok: false, reason: "invalid_payload" };
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (nowSec - authDate > 86400 || authDate - nowSec > 300) {
+      return { ok: false, reason: "expired_init_data" };
+    }
+
+    params.delete("hash");
+    const pairs = Array.from(params.entries()).sort(([a], [b]) => a.localeCompare(b));
+    const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join("\n");
+
+    const enc = new TextEncoder();
+    const webAppKey = await crypto.subtle.importKey(
+      "raw",
+      enc.encode("WebAppData"),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const secretKeyBytes = await crypto.subtle.sign("HMAC", webAppKey, enc.encode(botToken));
+    const hmacKey = await crypto.subtle.importKey(
+      "raw",
+      secretKeyBytes,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sigBytes = await crypto.subtle.sign("HMAC", hmacKey, enc.encode(dataCheckString));
+    const calculatedHash = Array.from(new Uint8Array(sigBytes))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    if (!timingSafeEqualHex(calculatedHash, incomingHash)) {
+      return { ok: false, reason: "invalid_signature" };
+    }
+
+    const userRaw = params.get("user");
+    const userObj = userRaw ? JSON.parse(userRaw) : null;
+    if (!userObj || !userObj.id) {
+      return { ok: false, reason: "missing_user" };
+    }
+    return {
+      ok: true,
+      user: {
+        id: userObj.id,
+        first_name: userObj.first_name || "",
+        username: userObj.username || "",
+      },
+    };
+  } catch (e) {
+    return { ok: false, reason: "verification_error" };
+  }
+}
+
+async function checkTelegramChannelMembership(botToken, channelId, userId) {
+  if (!botToken || !channelId || !userId) return { ok: false, member: false, transient: true };
+  try {
+    const resp = await fetchWithTimeout(
+      `https://api.telegram.org/bot${botToken}/getChatMember?chat_id=${encodeURIComponent(channelId)}&user_id=${encodeURIComponent(String(userId))}`,
+      { method: "GET" },
+      6000
+    );
+    const data = await resp.json();
+    if (data && data.ok && data.result) {
+      const status = String(data.result.status || "").toLowerCase();
+      const isMember = ["creator", "administrator", "member", "restricted"].includes(status);
+      return { ok: true, member: isMember, status, transient: false };
+    }
+    const desc = String(data?.description || "").toLowerCase();
+    if (
+      desc.includes("user_not_participant") ||
+      desc.includes("participant_id_invalid") ||
+      desc.includes("kicked") ||
+      desc.includes("left")
+    ) {
+      return { ok: true, member: false, status: "left", transient: false };
+    }
+    return { ok: false, member: false, transient: true, error: data?.description || "Telegram API error" };
+  } catch (e) {
+    return { ok: false, member: false, transient: true, error: e.message };
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -1246,8 +1401,9 @@ export default {
         return Response.redirect(`${playerBase}/`, 302);
       }
       const params = new URLSearchParams(url.search);
+      params.delete("tg");
+      params.delete("from");
       params.set("v", surl);
-      if (!params.has("tg")) params.set("tg", "1");
       return Response.redirect(`${playerBase}/?${params.toString()}`, 302);
     }
 
@@ -1263,7 +1419,7 @@ export default {
       const pathParam = url.searchParams.get("path") || "";
       const idxRaw = parseInt(url.searchParams.get("idx") || "0", 10);
       const fidParam = (url.searchParams.get("fid") || "").trim();
-      const streamParams = new URLSearchParams({ tg: "1" });
+      const streamParams = new URLSearchParams();
 
       if (/^[a-z][a-z0-9+.-]*:/i.test(surl) || /^[a-z0-9.-]+\.[a-z]{2,}\//i.test(surl)) {
         let normalizedUrl = surl;
@@ -1339,6 +1495,93 @@ export default {
         status: result.rejected ? 400 : ((result.success || hasMeta) ? (result.requires_auth_api ? 422 : 200) : 404),
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
+    }
+
+    // 2.4 Telegram Mini App Cryptographic Channel Membership Verification (/api/verify-member)
+    if (url.pathname === "/api/verify-member" && request.method === "POST") {
+      try {
+        const body = await request.json().catch(() => ({}));
+        const initData = typeof body?.initData === "string" ? body.initData : "";
+        if (!initData) {
+          return new Response(
+            JSON.stringify({
+              verified: false,
+              member: false,
+              channel: env.TARGET_CHANNEL_ID || DEFAULT_TARGET_CHANNEL,
+              reason: "missing_init_data",
+              message: "Open inside Telegram Mini App to verify membership.",
+            }),
+            { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+          );
+        }
+
+        const targetChannel = (env.TARGET_CHANNEL_ID || DEFAULT_TARGET_CHANNEL).trim();
+        if (!botToken) {
+          // Seamless Edge fallback: forward initData securely to Render Bot instance where BOT_TOKEN is hosted
+          const renderUrl = (env.RENDER_URL || "https://teravidsplay.onrender.com").replace(/\/+$/, "");
+          try {
+            const renderResp = await fetchWithTimeout(
+              `${renderUrl}/verify-member`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "User-Agent": "TeravidsPlay-Worker/2027" },
+                body: JSON.stringify({ initData }),
+              },
+              10000
+            );
+            const renderData = await renderResp.json().catch(() => null);
+            if (renderData && typeof renderData.verified === "boolean") {
+              return new Response(JSON.stringify(renderData), {
+                status: renderResp.ok ? 200 : renderResp.status,
+                headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+              });
+            }
+          } catch (e) {}
+
+          return new Response(
+            JSON.stringify({
+              verified: false,
+              member: false,
+              channel: targetChannel,
+              reason: "verifier_unavailable",
+              message: "Membership verifier is temporarily busy. Please try again in a few seconds.",
+            }),
+            { status: 503, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+          );
+        }
+
+        const check = await verifyTelegramInitData(initData, botToken);
+        if (!check.ok || !check.user?.id) {
+          return new Response(
+            JSON.stringify({
+              verified: false,
+              member: false,
+              channel: targetChannel,
+              reason: check.reason || "unauthorized",
+              message: "Invalid or expired Telegram Mini App session. Please reopen from @Teravidsplayerbot.",
+            }),
+            { status: 403, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+          );
+        }
+
+        const mem = await checkTelegramChannelMembership(botToken, targetChannel, check.user.id);
+        return new Response(
+          JSON.stringify({
+            verified: true,
+            member: Boolean(mem.member),
+            transient: Boolean(mem.transient),
+            status: mem.status || "unknown",
+            channel: targetChannel,
+            user: check.user,
+          }),
+          { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+        );
+      } catch (err) {
+        return new Response(
+          JSON.stringify({ verified: false, member: false, reason: "server_error", message: err.message }),
+          { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // 3. 24/7 Serverless Telegram Bot Webhook
@@ -1426,7 +1669,6 @@ export default {
         if (Array.isArray(resolved?.videos) && resolved.videos.length > 1) {
           playerParams.set("list", "1");
         }
-        playerParams.set("tg", "1");
         const shortPlayerUrl = `${playerBase}/?${playerParams.toString()}`;
 
         const escapeHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1439,9 +1681,15 @@ export default {
         );
         const caption = `🎬 <b>${cleanTitle}</b>\n\n📦 <b>Size:</b> ${sizeLabel}`;
 
+        const isPrivateChat = msg.chat?.type === "private";
+        const compactTok = encodeCompactStartToken({ surl, dirPath, streamUrl });
+        const channelBtnUrl = buildMiniAppDeepLink(compactTok, env);
+        const btnText = totalCount > 1
+          ? `🟢 ▶️ WATCH PLAYLIST (${totalCount} VIDEOS) 🍿`
+          : "🟢 ▶️ WATCH IN MINI APP (HD) 🍿";
         const replyMarkup = {
           inline_keyboard: [
-            [{ text: totalCount > 1 ? `🟢 ▶️ WATCH PLAYLIST (${totalCount} VIDEOS) 🍿` : "🟢 ▶️ WATCH ONLINE (FULL HD) 🍿", url: shortPlayerUrl }],
+            [isPrivateChat ? { text: btnText, web_app: { url: shortPlayerUrl } } : { text: btnText, url: channelBtnUrl }],
           ],
         };
 
@@ -1546,7 +1794,7 @@ export default {
       // Legacy ?dl=1 links now redirect directly into Web Player Stream instead of triggering a file download
       if (url.searchParams.get("dl") === "1") {
         const customFn = url.searchParams.get("filename") || "";
-        const streamParams = new URLSearchParams({ stream: targetUrl, tg: "1" });
+        const streamParams = new URLSearchParams({ stream: targetUrl });
         if (customFn) streamParams.set("title", customFn);
         return Response.redirect(`${playerBase}/?${streamParams.toString()}`, 302);
       }

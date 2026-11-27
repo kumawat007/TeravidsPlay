@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
-  <title>TeravidsPlay — Ad-Free Cinema Cloud Video Player</title>
+  <title>TeravidsPlay — 18+ VIP Telegram Mini App Cinema</title>
 
   <!-- SEO & OpenGraph -->
-  <meta name="description" content="Ultra-fast, ad-free cinema video player for Telegram & TeraBox with YouTube controls, 4X ultra-long press speed, and 300% sound boost." />
-  <meta property="og:title" content="TeravidsPlay — Ad-Free Cinema Video Player" />
-  <meta property="og:description" content="Watch TeraBox videos in Full HD with 4X ultra turbo speed and 300% sound boost." />
+  <meta name="description" content="Private 18+ VIP cinema streaming inside Telegram Mini App for @teravidsplayer members — 1080p Full HD, zero ads, 4X turbo speed & 300% sound boost." />
+  <meta property="og:title" content="TeravidsPlay — 18+ VIP Telegram Mini App Player" />
+  <meta property="og:description" content="Exclusive ad-free 1080p cloud cinema inside Telegram Mini App for @teravidsplayer." />
 
   <!-- Inline SVG Favicon (Telegram Blue Icon) -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='%230088cc'/><path d='M17.5 7.5L5.5 12l4 1.5 1.5 4.5 2.5-2.5 4 3 2.5-12z' fill='%23ffffff'/></svg>" />
@@ -38,6 +38,7 @@
           </svg>
         </div>
         <span class="nav-brand-title">TeravidsPlay</span>
+        <span class="nav-vip-badge"><span aria-hidden="true">🔞</span> 18+ VIP</span>
       </a>
     </div>
 
@@ -58,28 +59,62 @@
 
   <main id="mainContent">
     <!-- ============================================================== -->
-    <!-- 1. HOME PAGE VIEW (Shown ONLY when no video link is present)    -->
+    <!-- 1. 18+ VIP LOUNGE HOMEPAGE (Zero Videos — Mini App Funnel Only) -->
     <!-- ============================================================== -->
     <div id="homePage" class="home-container" style="display: none;">
-      <div class="home-card">
-        <div class="home-badge-icon" aria-hidden="true">
-          <span class="cute-emoji">🍿</span>
+      <div class="home-card vip-lounge-card">
+        <div class="vip-top-pill">
+          <span aria-hidden="true">🔞</span>
+          <span>18+ ADULTS ONLY • PRIVATE VIP LOUNGE</span>
         </div>
 
-        <h1 class="home-title">Welcome to TeravidsPlay!</h1>
+        <div class="home-badge-icon" aria-hidden="true">
+          <span class="vip-emblem">18+</span>
+        </div>
+
+        <h1 class="home-title">TeravidsPlay 18+ VIP Cinema</h1>
 
         <p class="home-cute-msg">
-          Hey there! ✨ Welcome to your ultra-fast, private, ad-free cinema zone.
-          Watch all video releases from <b>@teravidsplayer</b> in <b>Full HD 1080p</b> with <b>300% sound boost</b> and <b>4X ultra turbo speed</b>. Zero ads, pure streaming joy! 🚀
+          Private, ad-free <b>Full HD 1080p</b> streaming lounge exclusively for verified members of <b>@teravidsplayer</b>.
+          Stream inside our secure <b>Telegram Mini App</b> with zero downloads, zero popups, <b>300% sound boost</b>, and <b>4X turbo speed</b>.
         </p>
 
+        <ol class="vip-steps-grid" aria-label="How to watch inside Telegram Mini App">
+          <li class="vip-step-item">
+            <span class="vip-step-num" aria-hidden="true">📢</span>
+            <div>
+              <strong>1. Join @teravidsplayer</strong>
+              <span>Unlock verified channel access</span>
+            </div>
+          </li>
+          <li class="vip-step-item">
+            <span class="vip-step-num" aria-hidden="true">📱</span>
+            <div>
+              <strong>2. Open Mini App</strong>
+              <span>1-Tap launch inside Telegram</span>
+            </div>
+          </li>
+          <li class="vip-step-item">
+            <span class="vip-step-num" aria-hidden="true">🍿</span>
+            <div>
+              <strong>3. Stream Ad-Free</strong>
+              <span>1080p HD • Stream-Only Privacy</span>
+            </div>
+          </li>
+        </ol>
+
         <div class="home-actions-row">
-          <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="home-action-btn btn-tg">
+          <button type="button" id="homeJoinChannelBtn" class="home-action-btn btn-vip-crimson">
+            <span aria-hidden="true">🔞</span>
+            <span>Join 18+ VIP Channel (@teravidsplayer)</span>
+          </button>
+
+          <button type="button" id="homeMiniAppBtn" class="home-action-btn btn-tg">
             <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>
             </svg>
-            <span>Join Official Telegram Channel</span>
-          </a>
+            <span>Launch Telegram Mini App</span>
+          </button>
 
           <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="home-action-btn btn-cf">
             <span aria-hidden="true">☕</span>
@@ -88,19 +123,36 @@
         </div>
 
         <div class="home-chips-row">
-          <span class="home-chip">⚡ Zero Ads</span>
+          <span class="home-chip">🔞 18+ Verified Only</span>
+          <span class="home-chip">⚡ Zero Ads &amp; Popups</span>
+          <span class="home-chip">🔒 Stream-Only Privacy</span>
           <span class="home-chip">🔊 300% Sound Boost</span>
-          <span class="home-chip">⏩ 4X Ultra Turbo Speed</span>
-          <span class="home-chip">🍿 1080p Full HD</span>
-          <span class="home-chip">🎬 Theater Mode</span>
+          <span class="home-chip">⏩ 4X Turbo Speed</span>
         </div>
 
         <div class="home-footer-meta">
-          <span>👨‍💻 Creator: Developed by <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer">KUMAWAT⁰⁰⁷ PRINTs</a></span>
+          <span>👨‍💻 Creator: <a href="https://github.com/kumawat007" target="_blank" rel="noopener noreferrer">KUMAWAT⁰⁰⁷ PRINTs</a></span>
           <span>📢 Official Channel: <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer">@teravidsplayer</a></span>
+          <button type="button" id="openAgeAdvisoryBtn" class="footer-link-btn">🔞 18+ Advisory &amp; Safety</button>
         </div>
       </div>
     </div>
+
+    <!-- Native Modal Dialog for 18+ Age Confirmation -->
+    <dialog id="ageGateDialog" closedby="any" aria-labelledby="ageDialogTitle">
+      <div class="age-dialog-box">
+        <div class="age-dialog-badge" aria-hidden="true">🔞 18+</div>
+        <h1 id="ageDialogTitle" class="age-dialog-title">Adults-Only VIP Community (18+)</h1>
+        <p class="age-dialog-desc">
+          <b>TeravidsPlay</b> links private mature communities on <b>@teravidsplayer</b> with ad-free Telegram Mini App streaming.
+          By continuing, you confirm you are at least <b>18 years of age</b> and accept stream-only private playback.
+        </p>
+        <form method="dialog" class="age-dialog-actions">
+          <button type="submit" value="cancel" class="btn btn-secondary" autofocus>Cancel (Exit)</button>
+          <button type="submit" value="confirm" id="ageConfirmBtn" class="btn btn-vip-crimson">🔞 I am 18+ — Continue to Telegram</button>
+        </form>
+      </div>
+    </dialog>
 
     <!-- ============================================================== -->
     <!-- 2. CINEMA VIDEO PLAYER VIEW (Shown ONLY during playback)        -->
@@ -194,19 +246,24 @@
           <span id="resumeToastText">Resumed</span>
         </div>
 
-        <!-- Channel Join Gate Overlay -->
+        <!-- Channel Join & Telegram Mini App Verification Gate -->
         <div id="channelGateOverlay" class="channel-gate-overlay" role="dialog" aria-modal="true" aria-labelledby="gateTitleHeading" style="display: none;">
           <div class="channel-gate-card">
+            <div class="gate-vip-pill">
+              <span aria-hidden="true">🔞</span>
+              <span>18+ MEMBERS ONLY • @TERAVIDSPLAYER</span>
+            </div>
             <div class="gate-lock-icon" aria-hidden="true">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ff0000" stroke-width="2">
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#ff1e56" stroke-width="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
             </div>
-            <h2 id="gateTitleHeading" class="gate-title">Join Channel to Unlock Video</h2>
-            <p class="gate-subtitle">
-              Join <b>@teravidsplayer</b> to unlock unlimited 1080p ad-free cloud streaming!
+            <h2 id="gateTitleHeading" class="gate-title">Join @teravidsplayer to Unlock</h2>
+            <p id="gateSubtitle" class="gate-subtitle">
+              Real-time verification runs inside Telegram Mini App. Join <b>@teravidsplayer</b> first to unlock 1080p ad-free streaming!
             </p>
+            <p id="gateStatusMsg" class="gate-status-msg" role="status" aria-live="polite" style="display: none;"></p>
 
             <div class="gate-actions">
               <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" class="gate-btn gate-btn-telegram" id="gateJoinBtn">
@@ -216,11 +273,16 @@
                 <span>1. Join @teravidsplayer Channel</span>
               </a>
 
+              <a href="https://t.me/Teravidsplayerbot?start=open" target="_blank" rel="noopener noreferrer" class="gate-btn gate-btn-unlock" id="gateMiniAppLink" style="display: none;">
+                <span aria-hidden="true">📱</span>
+                <span>2. Verify &amp; Watch in Mini App</span>
+              </a>
+
               <button type="button" class="gate-btn gate-btn-unlock" id="gateUnlockBtn">
                 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
-                <span>2. I Have Joined (Unlock &amp; Watch)</span>
+                <span id="gateUnlockBtnLabel">2. Verify Membership &amp; Watch</span>
               </button>
             </div>
           </div>
