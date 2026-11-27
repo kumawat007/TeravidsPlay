@@ -16,22 +16,22 @@
 ---
 
 ### ✨ Features
-- 🚀 **Cinema Theater Player:** Full HD 1080p, zero ads, YouTube controls, 4X turbo speed & 300% audio boost.
-- 🤖 **24/7 Channel Bot:** Auto-extracts real video names, sizes & thumbnails with auto-unlock (`&tg=1`).
-- ⚡ **Edge Proxy:** Cloudflare Worker handles HTTP 206 byte-ranges, HLS playlists & bypasses ISP blocks.
+- 🚀 **Telegram Mini App Player:** Full HD 1080p, zero ads, stream-only privacy, 4X turbo speed & 300% audio boost.
+- 🤖 **24/7 Channel Bot:** Auto-extracts real video names, sizes, thumbnails & video frames with verified `@teravidsplayer` Mini App lock.
+- ⚡ **Edge Proxy & Verifier:** Cloudflare Worker handles HTTP 206 byte-ranges, HLS playlists, ISP-block bypass & cryptographic Telegram `initData` verification.
 
 ---
 
 ### 🚀 Quick Deploy
 
 - **Web Player:** Deploy `player/` to [Vercel](https://vercel.com) (`cd player && vercel --prod`).
-- **Edge Proxy:** Deploy `worker/worker.js` to [Cloudflare Workers](https://dash.cloudflare.com).
-- **Telegram Bot:** Deploy `bot/` to [Render.com](https://render.com) (Free Web Service: `python bot.py`).
+- **Edge Proxy:** Deploy `worker/worker.js` to [Cloudflare Workers](https://dash.cloudflare.com) (set `BOT_TOKEN` secret + `TARGET_CHANNEL_ID=@teravidsplayer`).
+- **Telegram Bot:** Deploy `bot/` to [Render.com](https://render.com) (Web Service: `python bot.py`).
 
 ---
 
-### ⚙️ Bot Config (`bot/.env`)
-`BOT_TOKEN=...` • `TARGET_CHANNEL_ID=@teravidsplayer` • `PLAYER_URL=https://teravidsplayer.vercel.app` • `WORKER_URL=https://teravidsplay.proxyking.workers.dev`
+### ⚙️ Config (`bot/.env`)
+`BOT_TOKEN=...` • `TARGET_CHANNEL_ID=@teravidsplayer` • `BOT_USERNAME=Teravidsplayerbot` • `MINI_APP_NAME=TeravidsPlay` • `PLAYER_URL=https://teravidsplayer.vercel.app` • `WORKER_URL=https://teravidsplay.proxyking.workers.dev`
 
 ---
 

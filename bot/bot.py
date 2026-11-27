@@ -465,7 +465,6 @@ def build_channel_markup(
     thumb: str = "",
     dir_path: str = "",
     idx: Optional[int] = None,
-    file_id: str = "",
     playlist_count: int = 1,
     is_summary: bool = False,
     for_channel: bool = True,
@@ -666,7 +665,6 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
         stream_url = vid.get("stream_url") or vid.get("hls_url") or ""
         thumb_url = vid.get("thumbnail") or ""
         backup_thumb = vid.get("fallback_thumbnail") or ""
-        fid = vid.get("file_id") or ""
 
         markup, _ = build_channel_markup(
             stream_url=stream_url,
@@ -675,7 +673,6 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
             surl=surl,
             thumb=thumb_url or backup_thumb,
             dir_path=dir_path,
-            file_id=fid,
             for_channel=is_channel_chat,
         )
         publish_card(
@@ -736,7 +733,6 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
             item_stream = vid.get("stream_url") or vid.get("hls_url") or ""
             item_thumb = vid.get("thumbnail") or ""
             item_backup = vid.get("fallback_thumbnail") or ""
-            item_fid = vid.get("file_id") or ""
 
             item_markup, _ = build_channel_markup(
                 stream_url=item_stream,
@@ -746,7 +742,6 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
                 thumb=item_thumb or item_backup,
                 dir_path=dir_path,
                 idx=i,
-                file_id=item_fid,
                 playlist_count=total,
                 is_summary=False,
                 for_channel=is_channel_chat,

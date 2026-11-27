@@ -2308,7 +2308,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updatePlaylistActiveState();
   }
 
-  function selectPlaylistVideo(index, autoPlayNow = isChannelUnlocked, triggerDlCheck = false) {
+  function selectPlaylistVideo(index, autoPlayNow = isChannelUnlocked) {
     if (!Array.isArray(playlistVideos) || playlistVideos.length === 0) return;
     const clampedIdx = Math.max(0, Math.min(index, playlistVideos.length - 1));
     activeVideoIndex = clampedIdx;
@@ -2491,7 +2491,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activeVideoIndex = initialIdx;
 
         renderPlaylistSection(playlistVideos);
-        selectPlaylistVideo(initialIdx, isChannelUnlocked, true);
+        selectPlaylistVideo(initialIdx, isChannelUnlocked);
         return;
       }
 
