@@ -1188,7 +1188,7 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl) {
 }
 
 const DEFAULT_BOT_USERNAME = "Teravidsplayerbot";
-const DEFAULT_MINI_APP_NAME = "TeravidsPlay";
+const DEFAULT_MINI_APP_NAME = "";
 const DEFAULT_TARGET_CHANNEL = "@teravidsplayer";
 
 function toBase64Url(str) {
@@ -1237,10 +1237,10 @@ function buildMiniAppDeepLink(compactToken, env = {}) {
   const botUser = (env.BOT_USERNAME || DEFAULT_BOT_USERNAME).replace(/^@/, "");
   const miniApp = (env.MINI_APP_NAME !== undefined ? env.MINI_APP_NAME : DEFAULT_MINI_APP_NAME).trim();
   const tok = (compactToken || "open").slice(0, 64);
-  if (miniApp) {
+  if (miniApp && miniApp.toLowerCase() !== "main") {
     return `https://t.me/${botUser}/${miniApp}?startapp=${encodeURIComponent(tok)}`;
   }
-  return `https://t.me/${botUser}?start=${encodeURIComponent(tok)}`;
+  return `https://t.me/${botUser}?startapp=${encodeURIComponent(tok)}`;
 }
 
 function timingSafeEqualHex(a, b) {

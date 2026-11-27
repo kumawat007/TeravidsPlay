@@ -31,9 +31,9 @@
 ---
 
 ### ⚙️ Config (`bot/.env`)
-`BOT_TOKEN=...` • `TARGET_CHANNEL_ID=@teravidsplayer` • `BOT_USERNAME=Teravidsplayerbot` • `MINI_APP_NAME=TeravidsPlay` • `PLAYER_URL=https://teravidsplayer.vercel.app` • `WORKER_URL=https://teravidsplay.proxyking.workers.dev`
+`BOT_TOKEN=...` • `TARGET_CHANNEL_ID=@teravidsplayer` • `BOT_USERNAME=Teravidsplayerbot` • `MINI_APP_NAME=` *(Main Mini App `?startapp=`)* • `PLAYER_URL=https://teravidsplayer.vercel.app` • `WORKER_URL=https://teravidsplay.proxyking.workers.dev`
 
 ---
 
-### 👨‍💻 Creator 
-Developed with ❤️ by **[KUMAWAT⁰⁰⁷ PRINTs](https://github.com/kumawat007)** • Official Channel: **[@teravidsplayer](https://t.me/teravidsplayer)**
+### 📢 Official Community
+Official Channel: **[@teravidsplayer](https://t.me/teravidsplayer)** • Mini App Bot: **[@Teravidsplayerbot](https://t.me/Teravidsplayerbot)**

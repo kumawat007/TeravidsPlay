@@ -34,6 +34,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html {
+  scroll-padding-top: calc(54px + max(env(safe-area-inset-top, 0px), var(--tg-viewport-safe-area-inset-top, 0px)) + var(--tg-viewport-content-safe-area-inset-top, 0px));
+}
+
 html,
 body {
   width: 100%;
@@ -134,13 +138,13 @@ progress.splash-progress::-moz-progress-bar {
   top: 0;
   left: 0;
   right: 0;
-  height: 54px;
+  min-block-size: calc(54px + max(env(safe-area-inset-top, 0px), var(--tg-viewport-safe-area-inset-top, 0px)) + var(--tg-viewport-content-safe-area-inset-top, 0px));
   background-color: var(--cinema-nav);
   border-bottom: 1px solid var(--cinema-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: calc(max(env(safe-area-inset-top, 0px), var(--tg-viewport-safe-area-inset-top, 0px)) + var(--tg-viewport-content-safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) 0 max(20px, env(safe-area-inset-left, 0px));
   z-index: 100;
   backdrop-filter: blur(12px);
 }
@@ -1648,8 +1652,8 @@ progress.splash-progress::-moz-progress-bar {
   }
 
   .app-navbar {
-    height: 46px;
-    padding: 0 14px;
+    min-block-size: calc(46px + max(env(safe-area-inset-top, 0px), var(--tg-viewport-safe-area-inset-top, 0px)) + var(--tg-viewport-content-safe-area-inset-top, 0px));
+    padding-inline: max(14px, env(safe-area-inset-left, 0px)) max(14px, env(safe-area-inset-right, 0px));
   }
 
   .nav-brand-title {

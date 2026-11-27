@@ -43,7 +43,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 PLAYER_URL = (os.getenv("PLAYER_URL") or "https://teravidsplayer.vercel.app").rstrip("/")
 TARGET_CHANNEL_ID = os.getenv("TARGET_CHANNEL_ID", "").strip()
 _env_mini_app = os.getenv("MINI_APP_NAME")
-MINI_APP_NAME = (_env_mini_app if _env_mini_app is not None else "TeravidsPlay").strip()
+MINI_APP_NAME = (_env_mini_app if _env_mini_app is not None else "").strip()
 BOT_USERNAME_ENV = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 BOT_USERNAME = BOT_USERNAME_ENV
 ADMIN_USER_IDS = {
@@ -438,9 +438,9 @@ def get_resolved_bot_username() -> str:
 def build_miniapp_deep_link(compact_token: str) -> str:
     bot_user = get_resolved_bot_username().lstrip("@")
     tok = (compact_token or "open")[:64]
-    if MINI_APP_NAME:
+    if MINI_APP_NAME and MINI_APP_NAME.lower() != "main":
         return f"https://t.me/{bot_user}/{MINI_APP_NAME}?startapp={urllib.parse.quote(tok, safe='')}"
-    return f"https://t.me/{bot_user}?start={urllib.parse.quote(tok, safe='')}"
+    return f"https://t.me/{bot_user}?startapp={urllib.parse.quote(tok, safe='')}"
 
 
 def build_player_url_from_compact_token(payload: str) -> str:

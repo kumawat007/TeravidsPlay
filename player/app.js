@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
   ];
 
   const BOT_USERNAME = 'Teravidsplayerbot';
-  const MINI_APP_NAME = 'TeravidsPlay';
+  const MINI_APP_NAME = '';
   const TARGET_CHANNEL_URL = 'https://t.me/teravidsplayer';
 
   const appSplash = document.getElementById('appSplash');
@@ -91,7 +91,20 @@ document.addEventListener('DOMContentLoaded', () => {
   if (tg) {
     tg.ready();
     tg.expand();
+    const syncTgSafeAreas = () => {
+      try {
+        const rootStyle = document.documentElement.style;
+        const sa = tg.safeAreaInset;
+        const csa = tg.contentSafeAreaInset;
+        if (sa && typeof sa.top === 'number') rootStyle.setProperty('--tg-viewport-safe-area-inset-top', `${sa.top}px`);
+        if (csa && typeof csa.top === 'number') rootStyle.setProperty('--tg-viewport-content-safe-area-inset-top', `${csa.top}px`);
+        if (sa && typeof sa.bottom === 'number') rootStyle.setProperty('--tg-viewport-safe-area-inset-bottom', `${sa.bottom}px`);
+      } catch (e) {}
+    };
+    syncTgSafeAreas();
     try {
+      tg.onEvent?.('safeAreaChanged', syncTgSafeAreas);
+      tg.onEvent?.('contentSafeAreaChanged', syncTgSafeAreas);
       tg.setHeaderColor('#06090e');
       tg.setBackgroundColor('#06090e');
       if (typeof tg.disableVerticalSwipes === 'function') {
@@ -457,10 +470,10 @@ document.addEventListener('DOMContentLoaded', () => {
       idx: activeVideoIndex || requestedIdx,
       stream: streamUrl || (isSafeHttpUrl(resolveInput) ? resolveInput : ''),
     });
-    if (MINI_APP_NAME) {
+    if (MINI_APP_NAME && MINI_APP_NAME.toLowerCase() !== 'main') {
       return `https://t.me/${BOT_USERNAME}/${MINI_APP_NAME}?startapp=${encodeURIComponent(compact)}`;
     }
-    return `https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(compact)}`;
+    return `https://t.me/${BOT_USERNAME}?startapp=${encodeURIComponent(compact)}`;
   }
 
   function refreshGateDeepLink() {
@@ -838,9 +851,9 @@ document.addEventListener('DOMContentLoaded', () => {
     homeJoinChannelBtn.addEventListener('click', () => handleVipHomeAction(TARGET_CHANNEL_URL));
   }
   if (homeMiniAppBtn) {
-    const homeMiniUrl = MINI_APP_NAME
+    const homeMiniUrl = (MINI_APP_NAME && MINI_APP_NAME.toLowerCase() !== 'main')
       ? `https://t.me/${BOT_USERNAME}/${MINI_APP_NAME}?startapp=open`
-      : `https://t.me/${BOT_USERNAME}?start=open`;
+      : `https://t.me/${BOT_USERNAME}?startapp=open`;
     homeMiniAppBtn.addEventListener('click', () => handleVipHomeAction(homeMiniUrl));
   }
   if (openAgeAdvisoryBtn && ageGateDialog && typeof ageGateDialog.showModal === 'function') {
