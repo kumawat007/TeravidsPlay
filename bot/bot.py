@@ -66,7 +66,14 @@ def _reply_or_send(message: types.Message, text: str, **kwargs):
             return bot.send_message(message.chat.id, text, **kwargs)
         raise
 
-from terabox_extractor import TeraBoxExtractor, is_terabox_url, extract_all_urls, format_bytes
+from terabox_extractor import (
+    TeraBoxExtractor,
+    is_terabox_url,
+    extract_all_urls,
+    is_direct_video_url,
+    extract_all_direct_video_urls,
+    format_bytes,
+)
 
 extractor = TeraBoxExtractor()
 
@@ -77,16 +84,13 @@ DEFAULT_UA = (
 )
 
 
-def extract_urls_from_message(message: types.Message) -> List[str]:
-    """
-    Extracts ALL verified TeraBox/DiskWala/shortener URLs from raw text, captions,
-    or Telegram formatted hyperlink entities cleanly in order without duplicates.
-    """
+def _collect_message_urls(message: types.Message, text_extractor, validator) -> List[str]:
+    """Shared helper to extract deduplicated verified URLs from text, caption, and Telegram entities."""
     text = message.text or message.caption or ""
     urls: List[str] = []
     seen = set()
 
-    for u in extract_all_urls(text):
+    for u in text_extractor(text):
         if u not in seen:
             seen.add(u)
             urls.append(u)
@@ -94,11 +98,47 @@ def extract_urls_from_message(message: types.Message) -> List[str]:
     entities = (message.entities or []) + (message.caption_entities or [])
     for ent in entities:
         ent_url = (getattr(ent, "url", None) or "").strip()
-        if ent_url and ent_url not in seen and is_terabox_url(ent_url):
+        if ent_url and ent_url not in seen and validator(ent_url):
             seen.add(ent_url)
             urls.append(ent_url)
 
     return urls
+
+
+def extract_urls_from_message(message: types.Message) -> List[str]:
+    """Extracts ALL verified TeraBox/DiskWala/shortener URLs cleanly in order without duplicates."""
+    return _collect_message_urls(message, extract_all_urls, is_terabox_url)
+
+
+def extract_direct_video_urls_from_message(message: types.Message) -> List[str]:
+    """Extracts ALL verified public HTTPS direct video/HLS URLs (.mp4, .m3u8, etc.) from a message."""
+    return _collect_message_urls(message, extract_all_direct_video_urls, is_direct_video_url)
+
+
+def _build_direct_stream_bundle(direct_url: str, title_hint: str = "") -> Dict[str, Any]:
+    """Builds a stream-only playlist payload for a direct public HTTPS .mp4/.m3u8 URL (zero server upload)."""
+    parsed_u = urllib.parse.urlparse(direct_url)
+    raw_fn = os.path.basename(urllib.parse.unquote(parsed_u.path or ""))
+    clean_name = re.sub(r"\.[a-z0-9]{2,5}$", "", raw_fn, flags=re.I) if raw_fn else ""
+    fallback_title = clean_name.replace("_", " ").replace("-", " ").strip() or "Full HD Cloud Stream"
+    final_title = title_hint or fallback_title
+    is_hls = ".m3u8" in (parsed_u.path or "").lower()
+    return {
+        "success": True,
+        "surl": "",
+        "dir_path": "",
+        "videos": [
+            {
+                "title": final_title,
+                "size_bytes": 0,
+                "size_formatted": "Full HD Stream",
+                "thumbnail": "",
+                "stream_url": direct_url,
+                "hls_url": direct_url if is_hls else None,
+                "quality": "HD",
+            }
+        ],
+    }
 
 
 def extract_url_from_message(message: types.Message) -> str:
@@ -246,25 +286,6 @@ def build_channel_markup(
         watch_label = "🟢 ▶️ WATCH ONLINE (FULL HD) 🍿"
 
     markup.add(types.InlineKeyboardButton(text=watch_label, url=player_link))
-
-    if extractor.worker_url and surl:
-        dl_params: List[str] = []
-        if idx is not None and idx >= 0 and not is_summary:
-            dl_params.append(f"idx={idx}")
-        if file_id:
-            dl_params.append(f"fid={urllib.parse.quote(file_id, safe='')}")
-        if dir_path:
-            dl_params.append(f"path={urllib.parse.quote(dir_path, safe='')}")
-        dl_q = f"?{'&'.join(dl_params)}" if dl_params else ""
-        download_url = f"{extractor.worker_url}/dl/{urllib.parse.quote(surl, safe='')}{dl_q}"
-    elif PLAYER_URL:
-        download_url = f"{player_link}&dl=1" if "?" in player_link else f"{player_link}?dl=1"
-    else:
-        download_url = stream_url or get_channel_invite_link()
-
-    dl_label = "⚡ 📥 FAST DIRECT DOWNLOAD (PART 1) 🚀" if is_summary and playlist_count > 1 else "⚡ 📥 FAST DIRECT DOWNLOAD 🚀"
-    markup.add(types.InlineKeyboardButton(text=dl_label, url=download_url))
-
     return markup, player_link
 
 
@@ -490,13 +511,14 @@ def publish_resolved_bundle(chat_id, data: Dict[str, Any], title_hint: str = "")
 @bot.channel_post_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 @bot.edited_channel_post_handler(func=lambda msg: True, content_types=telebot.util.content_type_media)
 def handle_channel_post(message: types.Message):
-    """Catches all media links posted in the channel and replaces them with rich TeravidsPlay cards."""
+    """Catches all supported links posted in the channel and replaces them with rich TeravidsPlay stream cards."""
     logger.info(f"Incoming channel post in chat ID {message.chat.id}")
     urls = extract_urls_from_message(message)
-    if not urls:
+    direct_urls = extract_direct_video_urls_from_message(message)
+    if not urls and not direct_urls:
         return
 
-    title_hint = extract_title_hint_from_message(message, urls)
+    title_hint = extract_title_hint_from_message(message, urls + direct_urls)
     any_published = False
 
     for raw_url in urls:
@@ -527,6 +549,13 @@ def handle_channel_post(message: types.Message):
         if count > 0:
             any_published = True
             logger.info(f"Successfully published {count} card(s) to channel {message.chat.id}!")
+
+    for direct_url in direct_urls:
+        bundle = _build_direct_stream_bundle(direct_url, title_hint=title_hint)
+        count = publish_resolved_bundle(message.chat.id, bundle, title_hint=title_hint)
+        if count > 0:
+            any_published = True
+            logger.info(f"Successfully published direct stream card to channel {message.chat.id}!")
 
     if any_published:
         try:
@@ -585,10 +614,10 @@ def is_user_subscribed(user_id: int) -> bool:
 
 FORCE_SUB_TEXT = (
     "🔒 <b>Access Restricted — Channel Members Only!</b>\n\n"
-    "To use <b>TeravidsPlay Bot</b> and stream TeraBox videos with:\n"
+    "To use <b>TeravidsPlay Bot</b> and stream videos with:\n"
     "• ⚡ Instant Full HD Streaming\n"
-    "• 🚫 Zero Ads & Zero Popups\n"
-    "• 🚀 High-Speed Direct Downloads\n\n"
+    "• 🚫 Zero Ads &amp; Zero Popups\n"
+    "• 📱 Smooth Mobile &amp; Theater Playback\n\n"
     "👉 You must join our official channel <b>@teravidsplayer</b> first!\n\n"
     "👇 <b>Steps to Unlock:</b>\n"
     "1️⃣ Click <b>📢 Join Official Channel</b> below.\n"
@@ -723,11 +752,14 @@ def handle_private_post(message: types.Message):
         return
 
     urls = extract_urls_from_message(message)
-    if not urls:
+    direct_urls = extract_direct_video_urls_from_message(message)
+    can_post_channel = bool(TARGET_CHANNEL_ID and is_channel_admin(uid))
+
+    if not urls and not direct_urls:
         if message.chat.type == "private":
             hint_text = (
                 "👋 <b>Welcome to TeravidsPlay!</b>\n\n"
-                "Please send a valid <b>TeraBox video or folder link</b> to watch or download.\n\n"
+                "Please send a valid <b>TeraBox link</b> or direct <code>.mp4 / .m3u8</code> link (e.g. <code>files.catbox.moe</code>, Cloudflare R2) to stream in Full HD.\n\n"
                 "📢 Explore trending releases on <b>@teravidsplayer</b>!"
             )
             _reply_or_send(message, hint_text, parse_mode="HTML")
@@ -743,10 +775,20 @@ def handle_private_post(message: types.Message):
     except Exception:
         pass
 
-    title_hint = extract_title_hint_from_message(message, urls)
-    can_post_channel = bool(TARGET_CHANNEL_ID and is_channel_admin(uid))
+    title_hint = extract_title_hint_from_message(message, urls + direct_urls)
 
     try:
+        for direct_url in direct_urls:
+            bundle = _build_direct_stream_bundle(direct_url, title_hint=title_hint)
+            if can_post_channel:
+                try:
+                    target = int(TARGET_CHANNEL_ID) if TARGET_CHANNEL_ID.lstrip("-").isdigit() else TARGET_CHANNEL_ID
+                    publish_resolved_bundle(target, bundle, title_hint=title_hint)
+                    logger.info(f"Admin {uid} published direct stream link to channel {TARGET_CHANNEL_ID}")
+                except Exception as e:
+                    logger.error(f"Failed to publish direct link to channel {TARGET_CHANNEL_ID}: {e}")
+            publish_resolved_bundle(message.chat.id, bundle, title_hint=title_hint)
+
         for raw_url in urls:
             surl_preview = extractor.parse_surl(raw_url) or ""
             masked_token = f"{surl_preview[:3]}***{surl_preview[-3:]}" if len(surl_preview) > 6 else "***"

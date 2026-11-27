@@ -112,7 +112,7 @@
         <canvas id="ambientCanvas" class="ambient-canvas" width="64" height="36" aria-hidden="true"></canvas>
 
         <!-- Video Element -->
-        <video id="player" width="1280" height="720" playsinline preload="metadata"></video>
+        <video id="player" width="1280" height="720" playsinline preload="metadata" controlslist="nodownload"></video>
 
         <!-- Guaranteed Preview Poster Image Overlay (visible cleanly before first frame renders) -->
         <img id="videoPosterOverlay" class="video-poster-overlay" alt="" fetchpriority="high" style="display: none;" />
@@ -128,13 +128,6 @@
                 <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
               </svg>
             </button>
-            <a id="topDownloadBtn" href="#" target="_blank" rel="noopener noreferrer" class="top-icon-btn" title="Fast Direct Download" aria-label="Direct Download">
-              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-            </a>
             <button type="button" id="topShareBtn" class="top-icon-btn" title="Share Video" aria-label="Share Video">
               <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="18" cy="5" r="3"></circle>
@@ -212,7 +205,7 @@
             </div>
             <h2 id="gateTitleHeading" class="gate-title">Join Channel to Unlock Video</h2>
             <p class="gate-subtitle">
-              Join <b>@teravidsplayer</b> to unlock unlimited 1080p cloud streaming &amp; direct downloads!
+              Join <b>@teravidsplayer</b> to unlock unlimited 1080p ad-free cloud streaming!
             </p>
 
             <div class="gate-actions">
@@ -451,16 +444,7 @@
           </div>
 
           <div class="info-actions-row">
-            <a id="btnDownloadExt" href="#" target="_blank" rel="noopener noreferrer" class="action-btn-pill btn-highlight" title="Download">
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              <span>Download</span>
-            </a>
-
-            <button type="button" id="btnShareExt" class="action-btn-pill" title="Share Video">
+            <button type="button" id="btnShareExt" class="action-btn-pill btn-highlight" title="Share Video">
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="18" cy="5" r="3"></circle>
                 <circle cx="6" cy="12" r="3"></circle>

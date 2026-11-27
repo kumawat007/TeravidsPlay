@@ -4,8 +4,8 @@
  * Capabilities:
  * 1. Multi-Engine TeraBox Resolver (/api/resolve): Iteraplay Edge + direct terabox.app/share/list + shorturlinfo fallback.
  * 2. High-Speed Byte-Range Streaming Proxy (/?url=...): Full 206 Partial Content, CORS *,
- *    dynamic HLS M3U8 rewriting, ISP-block bypass (including Replit/TeraBox CDNs), and attachment download mode (&dl=1).
- * 3. Permanent Non-Expiring Direct Download Endpoint (/dl/:surl).
+ *    dynamic HLS M3U8 rewriting, ISP-block bypass (Stream-Only Mode — no attachment downloads).
+ * 3. Legacy /dl/:surl Redirect Route: Converts any legacy download links into direct TeravidsPlay streams.
  * 4. 24/7 Serverless Telegram Bot Webhook (/webhook) guarded by ENABLE_WORKER_BOT.
  */
 
@@ -74,6 +74,12 @@ const ALLOWED_TERABOX_HOSTS = [
   "replit.dev",
   "replit.app",
   "repl.co",
+  "catbox.moe",
+  "files.catbox.moe",
+  "litter.catbox.moe",
+  "archive.org",
+  "r2.dev",
+  "b-cdn.net",
   "teravidsplayer.vercel.app",
   "vercel.app",
   "workers.dev",
@@ -293,11 +299,7 @@ function parseSurlTokens(input) {
   } else if (/^[a-zA-Z0-9_-]{6,}$/.test(str)) {
     rawToken = str;
   } else {
-    rawToken = str
-      .replace(/^.*\/(?:s|v)\//, "")
-      .replace(/.*[?&](?:surl|v|s)=/, "")
-      .split(/[?&#]/)[0]
-      .trim();
+    return null;
   }
 
   if (!rawToken) return null;
@@ -346,9 +348,53 @@ function getContextualHeaders(targetUrl) {
     } else if (host.includes("terabox.app")) {
       referer = "https://www.terabox.app/";
       origin = "https://www.terabox.app";
+    } else if (host.includes("catbox.moe")) {
+      referer = "https://catbox.moe/";
+      origin = "https://catbox.moe";
+    } else if (host.includes("archive.org")) {
+      referer = "https://archive.org/";
+      origin = "https://archive.org";
     }
   } catch (e) {}
   return { referer, origin };
+}
+
+function isDirectMediaUrl(urlString) {
+  if (!isAllowedProxyUrl(urlString)) return false;
+  try {
+    const u = new URL(urlString);
+    const p = decodeURIComponent(u.pathname || "").toLowerCase();
+    return /\.(mp4|m3u8|webm|mov|m4v|mkv)$/.test(p);
+  } catch (e) {
+    return false;
+  }
+}
+
+function resolveDirectMediaPayload(urlString) {
+  try {
+    const u = new URL(urlString);
+    const rawSeg = decodeURIComponent((u.pathname || "").split("/").filter(Boolean).pop() || "");
+    const cleanTitle = rawSeg.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[_-]+/g, " ").trim() || "Cloud HD Stream";
+    const isM3u8 = (u.pathname || "").toLowerCase().includes(".m3u8");
+    return {
+      success: true,
+      surl: "",
+      dirPath: "",
+      videos: [
+        {
+          title: cleanTitle,
+          size: 0,
+          quality: "HD",
+          thumbnailUrl: "",
+          stream_url: urlString,
+          hls_url: isM3u8 ? urlString : "",
+          source: "direct-cdn",
+        },
+      ],
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 function sanitizeFilename(name) {
@@ -782,6 +828,11 @@ async function resolveTeraBoxStream(surlOrUrl, env = {}, ctx = null, bypassCache
     return await resolveDiskWalaLink(isDiskWalaUrl(expanded) ? expanded : candidateInput, env);
   }
 
+  if (/^https?:\/\//i.test(expanded) && isDirectMediaUrl(expanded)) {
+    const directRes = resolveDirectMediaPayload(expanded);
+    if (directRes) return directRes;
+  }
+
   const tokens = parseSurlTokens(expanded) || parseSurlTokens(candidateInput);
   if (!tokens) {
     return { success: false, rejected: true, message: "Invalid TeraBox link or token", debug: [] };
@@ -984,7 +1035,7 @@ async function fetchAllowedUpstream(targetUrl, method = "GET", rangeHeader = nul
 /**
  * Builds proxied streaming / download Response (handling HLS M3U8 rewrites, Range 206, images, and attachments).
  */
-async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload = false, customFilename = "") {
+async function serveProxiedMedia(request, workerOrigin, targetUrl) {
   const range = request.headers.get("Range");
   const { upstreamResponse, finalUrl, errorStatus, errorBody } = await fetchAllowedUpstream(
     targetUrl,
@@ -1084,7 +1135,7 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload
   responseHeaders.set("Access-Control-Allow-Headers", "Range, Content-Type, User-Agent, Accept");
   responseHeaders.set(
     "Access-Control-Expose-Headers",
-    "Content-Range, Content-Length, Accept-Ranges, Content-Type, Content-Disposition"
+    "Content-Range, Content-Length, Accept-Ranges, Content-Type"
   );
 
   const isThumbOrImage =
@@ -1099,6 +1150,8 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload
       responseHeaders.set("Content-Type", "image/jpeg");
     } else if (isSegment) {
       responseHeaders.set("Content-Type", "video/mp2t");
+    } else if (/\.webm(\?|$)/i.test(finalUrl)) {
+      responseHeaders.set("Content-Type", "video/webm");
     } else {
       responseHeaders.set("Content-Type", "video/mp4");
     }
@@ -1109,15 +1162,6 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl, forceDownload
   } else {
     responseHeaders.set("Accept-Ranges", "bytes");
     responseHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
-  }
-
-  if (forceDownload) {
-    const safeName = sanitizeFilename(customFilename || "TeravidsPlay_Video.mp4");
-    const asciiName = safeName.replace(/[^\x20-\x7e]+/g, "_") || "TeravidsPlay_Video.mp4";
-    responseHeaders.set(
-      "Content-Disposition",
-      `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
-    );
   }
 
   return new Response(upstreamResponse.body, {
@@ -1159,7 +1203,7 @@ export default {
             timestamp: new Date().toISOString(),
             webhook_endpoint: `${url.origin}/webhook`,
             resolve_endpoint: `${url.origin}/api/resolve?surl=<token>`,
-            download_endpoint: `${url.origin}/dl/<token>`,
+            stream_mode: "stream-only",
           },
           null,
           2
@@ -1186,55 +1230,48 @@ export default {
       return Response.redirect(`${playerBase}/?${params.toString()}`, 302);
     }
 
-    // 2.2 Permanent Direct Download Endpoint (/dl/:id?idx=0&fid=...)
+    // 2.2 Legacy /dl/:id Redirect Route -> Always redirects to Web Player Stream (Stream-Only Mode)
     if (url.pathname.startsWith("/dl/")) {
       const parts = url.pathname.split("/").filter(Boolean);
       const rawTail = parts.length > 2 ? parts.slice(1).join("/") : (parts[1] || "");
-      const surl = url.searchParams.get("url") || url.searchParams.get("surl") || url.searchParams.get("v") || rawTail;
+      const surl = (url.searchParams.get("url") || url.searchParams.get("surl") || url.searchParams.get("v") || rawTail).trim();
       if (!surl) {
-        return new Response(JSON.stringify({ error: "Missing video token" }), {
-          status: 400,
-          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        });
+        return Response.redirect(`${playerBase}/`, 302);
       }
 
       const pathParam = url.searchParams.get("path") || "";
-      const resolveInput = pathParam
-        ? `https://1024tera.com/wap/share/filelist?surl=${encodeURIComponent(surl)}&path=${encodeURIComponent(pathParam)}`
-        : surl;
-      const resolved = await resolveTeraBoxStream(resolveInput, env, ctx, false);
-      let dlTarget = "";
-      let fn = url.searchParams.get("fn") || `TeravidsPlay_${surl}.mp4`;
       const idxRaw = parseInt(url.searchParams.get("idx") || "0", 10);
       const fidParam = (url.searchParams.get("fid") || "").trim();
-      let idx = Number.isFinite(idxRaw) && idxRaw >= 0 ? idxRaw : 0;
+      const streamParams = new URLSearchParams({ tg: "1" });
 
-      if (resolved && resolved.success && Array.isArray(resolved.videos) && resolved.videos.length > 0) {
-        let vid = null;
-        if (fidParam) {
-          const foundIdx = resolved.videos.findIndex(
-            (v) => v && (String(v.fileId || "") === fidParam || String(v._id || "") === fidParam)
-          );
-          if (foundIdx >= 0) {
-            idx = foundIdx;
-            vid = resolved.videos[foundIdx];
+      if (/^[a-z][a-z0-9+.-]*:/i.test(surl) || /^[a-z0-9.-]+\.[a-z]{2,}\//i.test(surl)) {
+        const normalizedUrl = /^https?:\/\//i.test(surl) ? surl : `https://${surl}`;
+        if (!isTeraBoxOrShortenerUrl(normalizedUrl)) {
+          return new Response(JSON.stringify({ error: "Unsupported or unauthorized URL" }), {
+            status: 400,
+            headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+          });
+        }
+        const parsedTokens = parseSurlTokens(normalizedUrl);
+        if (isDirectMediaUrl(normalizedUrl)) {
+          streamParams.set("stream", normalizedUrl);
+        } else if (parsedTokens?.shareToken) {
+          streamParams.set("v", parsedTokens.shareToken);
+          if (parsedTokens.dirPath && !pathParam) {
+            streamParams.set("path", parsedTokens.dirPath);
           }
+        } else {
+          streamParams.set("url", normalizedUrl);
         }
-        if (!vid) {
-          vid = resolved.videos[Math.min(idx, resolved.videos.length - 1)] || resolved.videos[0];
-        }
-        dlTarget = vid.original_quality_url || vid.stream_url || vid.mp4_url_fast || vid.mp4_url_slow || "";
-        fn = url.searchParams.get("fn") || vid.title || fn;
+      } else {
+        streamParams.set("v", surl);
       }
-      if (dlTarget && isAllowedProxyUrl(dlTarget)) {
-        try {
-          return await serveProxiedMedia(request, url.origin, dlTarget, true, fn);
-        } catch (e) {}
-      }
-      const redirectParams = new URLSearchParams({ v: surl, tg: "1", nodl: "1" });
-      if (idx > 0) redirectParams.set("idx", String(idx));
-      if (pathParam) redirectParams.set("path", pathParam);
-      return Response.redirect(`${playerBase}/?${redirectParams.toString()}`, 302);
+
+      if (pathParam) streamParams.set("path", pathParam);
+      if (Number.isFinite(idxRaw) && idxRaw > 0) streamParams.set("idx", String(idxRaw));
+      if (fidParam) streamParams.set("fid", fidParam);
+
+      return Response.redirect(`${playerBase}/?${streamParams.toString()}`, 302);
     }
 
     // 2.3 High-Speed Metadata & Stream Resolution API (/api/resolve?surl=...)
@@ -1376,17 +1413,9 @@ export default {
         );
         const caption = `🎬 <b>${cleanTitle}</b>\n\n📦 <b>Size:</b> ${sizeLabel}`;
 
-        const dlParams = new URLSearchParams();
-        if (dirPath) dlParams.set("path", dirPath);
-        const dlQuery = dlParams.toString();
-        const downloadTarget = surl
-          ? `${url.origin}/dl/${encodeURIComponent(surl)}${dlQuery ? "?" + dlQuery : ""}`
-          : `${url.origin}/?url=${encodeURIComponent(streamUrl)}&dl=1&filename=${encodeURIComponent(title)}`;
-
         const replyMarkup = {
           inline_keyboard: [
             [{ text: totalCount > 1 ? `🟢 ▶️ WATCH PLAYLIST (${totalCount} VIDEOS) 🍿` : "🟢 ▶️ WATCH ONLINE (FULL HD) 🍿", url: shortPlayerUrl }],
-            [{ text: "⚡ 📥 FAST DIRECT DOWNLOAD 🚀", url: downloadTarget }],
           ],
         };
 
@@ -1502,9 +1531,14 @@ export default {
     }
 
     try {
-      const forceDl = url.searchParams.get("dl") === "1";
-      const customFn = url.searchParams.get("filename") || "";
-      return await serveProxiedMedia(request, url.origin, targetUrl, forceDl, customFn);
+      // Legacy ?dl=1 links now redirect directly into Web Player Stream instead of triggering a file download
+      if (url.searchParams.get("dl") === "1") {
+        const customFn = url.searchParams.get("filename") || "";
+        const streamParams = new URLSearchParams({ stream: targetUrl, tg: "1" });
+        if (customFn) streamParams.set("title", customFn);
+        return Response.redirect(`${playerBase}/?${streamParams.toString()}`, 302);
+      }
+      return await serveProxiedMedia(request, url.origin, targetUrl);
     } catch (err) {
       return new Response(
         JSON.stringify({ error: "Gateway Stream Error", message: err.message }),

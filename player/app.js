@@ -64,6 +64,10 @@ document.addEventListener('DOMContentLoaded', () => {
     'qzz.io',
     'cdniteraplay.qzz.io',
     'cloudflarestorage.com',
+    'catbox.moe',
+    'files.catbox.moe',
+    'litter.catbox.moe',
+    'archive.org',
   ];
 
   // 1. Telegram WebApp Integration & Auto-Unlock
@@ -92,7 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Top Bar Elements
   const topVideoTitle = document.getElementById('topVideoTitle');
-  const topDownloadBtn = document.getElementById('topDownloadBtn');
   const topShareBtn = document.getElementById('topShareBtn');
 
   // Bottom Controls Elements
@@ -169,7 +172,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Below-player metadata, playlist & external actions
   const videoTitleElem = document.getElementById('videoTitle');
   const fileSizeElem = document.getElementById('fileSize');
-  const btnDownloadExt = document.getElementById('btnDownloadExt');
   const btnShareExt = document.getElementById('btnShareExt');
   const ambientCanvas = document.getElementById('ambientCanvas');
   const playlistControlsRow = document.getElementById('playlistControlsRow');
@@ -273,11 +275,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function toProxyUrl(rawUrl, options = {}) {
+  function toProxyUrl(rawUrl) {
     if (!rawUrl || rawUrl.startsWith(WORKER_BASE)) return rawUrl;
     const params = new URLSearchParams({ url: rawUrl });
-    if (options.dl) params.set('dl', '1');
-    if (options.filename) params.set('filename', options.filename);
     return `${WORKER_BASE}/?${params.toString()}`;
   }
 
@@ -1666,7 +1666,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showError('Missing Stream URL', 'No valid stream URL was provided.');
       return;
     }
-    setDownloadTargets(url, topVideoTitle.textContent || 'TeravidsPlay_Video', true, activeVideoIndex, activeFileId);
+    syncChannelLink();
     startCandidateQueue(buildCandidatesForSingleUrl(url));
   }
 
@@ -1704,50 +1704,7 @@ document.addEventListener('DOMContentLoaded', () => {
     errorOverlay.style.display = 'flex';
   }
 
-  function configureDownloadButton(btn, dlHref, available) {
-    if (!btn) return;
-    if (available && dlHref) {
-      btn.href = dlHref;
-      btn.setAttribute('target', '_blank');
-      btn.setAttribute('rel', 'noopener noreferrer');
-      btn.dataset.unavailable = '0';
-    } else {
-      btn.href = '#download';
-      btn.removeAttribute('target');
-      btn.dataset.unavailable = '1';
-    }
-  }
-
-  [topDownloadBtn, btnDownloadExt].forEach((btn) => {
-    if (!btn) return;
-    btn.addEventListener('click', (e) => {
-      if (btn.dataset.unavailable === '1') {
-        e.preventDefault();
-        showToast('Direct download unavailable — streaming in HD on TeravidsPlay!');
-      }
-    });
-  });
-
-  // Strictly keeps all downloads & fallback targets within TeravidsPlay Worker/Telegram (never leaves to TeraBox/DiskWala)
-  function setDownloadTargets(rawMediaUrl, title, allowWorkerDl = true, idx = 0, fileId = '') {
-    const cleanName = title && title !== 'TeraBox Video' ? title : 'TeravidsPlay_Video.mp4';
-    const hasSafeMedia = isSafeHttpUrl(rawMediaUrl);
-    const activeToken = resolvedSurl || vId;
-    let dlHref = '';
-    if (hasSafeMedia) {
-      if (activeToken && allowWorkerDl) {
-        const dlParams = new URLSearchParams({ fn: cleanName });
-        if (idx > 0) dlParams.set('idx', String(idx));
-        if (fileId) dlParams.set('fid', fileId);
-        if (activeDirPath) dlParams.set('path', activeDirPath);
-        dlHref = `${WORKER_BASE}/dl/${encodeURIComponent(activeToken)}?${dlParams.toString()}`;
-      } else {
-        dlHref = toProxyUrl(rawMediaUrl, { dl: true, filename: cleanName });
-      }
-    }
-
-    configureDownloadButton(topDownloadBtn, dlHref, hasSafeMedia);
-    configureDownloadButton(btnDownloadExt, dlHref, hasSafeMedia);
+  function syncChannelLink() {
     if (externalChannelBtn) externalChannelBtn.href = 'https://t.me/teravidsplayer';
   }
 
@@ -1972,23 +1929,7 @@ document.addEventListener('DOMContentLoaded', () => {
     activeQualityId = primaryOpt ? primaryOpt.id : 'auto';
     renderQualityOptions(availableQualities, activeQualityId);
 
-    setDownloadTargets(mp4Url, title, Boolean(mp4Url), clampedIdx, activeFileId);
-
-    const hasPlayableHls = hlsEntries.length > 0;
-    if (triggerDlCheck) {
-      if (urlParams.get('nodl') === '1' && !mp4Url && hasPlayableHls) {
-        showToast('Direct MP4 unavailable — streaming in HD!');
-      } else if (urlParams.get('dl') === '1' && mp4Url) {
-        const dlTarget = toProxyUrl(mp4Url, { dl: true, filename: title });
-        const a = document.createElement('a');
-        a.href = dlTarget;
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        showToast('🚀 Fast Download Started!');
-      }
-    }
+    syncChannelLink();
 
     // Build ordered multi-tier playback queue: HLS (proxied if blocked) -> MP4 (proxied + direct)
     const allCandidates = [];
@@ -2074,7 +2015,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pm.thumbnailUrl) {
           setVideoPoster(pm.thumbnailUrl);
         }
-        setDownloadTargets('', pm.title || 'TeravidsPlay_Video', false);
+        syncChannelLink();
         showError(
           'DiskWala Auth Required',
           'DiskWala restricts web streaming unless authenticated DiskWala API credentials are configured on the server.'
@@ -2117,7 +2058,7 @@ document.addEventListener('DOMContentLoaded', () => {
           setVideoPoster(partial.thumbnailUrl);
         }
       }
-      setDownloadTargets('', partial?.title || cleanTitle || 'TeravidsPlay_Video', false);
+      syncChannelLink();
       showError('Video Unavailable', 'Could not resolve stream right now. Tap Try Again or check @teravidsplayer.');
     } catch (err) {
       showError('Connection Error', 'Failed to connect to streaming engine. Please try again.');
@@ -2186,20 +2127,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 23. Initiate Playback
+  // 23. Initiate Playback (Stream-Only Mode)
   if (resolveInput) {
     resolveAndPlay(resolveInput);
   } else if (streamUrl) {
-    setDownloadTargets(streamUrl, cleanTitle || 'TeravidsPlay_Video');
-    if (urlParams.get('dl') === '1') {
-      const a = document.createElement('a');
-      a.href = shouldProxyUrl(streamUrl) ? toProxyUrl(streamUrl, { dl: true, filename: cleanTitle }) : streamUrl;
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      showToast('🚀 Fast Download Started!');
-    }
+    syncChannelLink();
     loadStream(streamUrl, cleanThumb);
   }
 });

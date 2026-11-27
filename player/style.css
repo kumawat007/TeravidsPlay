@@ -1490,7 +1490,7 @@ body {
     gap: 14px;
   }
 
-  /* Modern 4-Button Grid for Mobile Actions (Download, Share, Channel, Coffee) */
+  /* Balanced Grid for Mobile Actions (Share, Channel, Coffee) */
   .info-actions-row {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -1504,6 +1504,10 @@ body {
     padding: 9px 12px;
     font-size: 13px;
     font-weight: 700;
+  }
+
+  .info-actions-row .action-btn-pill:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 }
 

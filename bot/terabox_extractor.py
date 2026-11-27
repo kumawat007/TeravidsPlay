@@ -217,6 +217,46 @@ def extract_all_urls(text: str) -> List[str]:
     return [u for _, u in hits]
 
 
+DIRECT_STREAM_EXTENSIONS = (".mp4", ".m3u8", ".webm", ".mov", ".m4v", ".mkv")
+
+
+def is_direct_video_url(url_str: str) -> bool:
+    """Validates a public HTTPS direct MP4/HLS video URL while blocking loopback/private/local hosts."""
+    if not url_str:
+        return False
+    try:
+        parsed = urllib.parse.urlparse(url_str.strip())
+        if parsed.scheme != "https":
+            return False
+        host = (parsed.hostname or "").lower().strip()
+        if not host or "." not in host or host in ("localhost", "localhost.localdomain") or host.endswith((".local", ".internal")):
+            return False
+        try:
+            ipaddress.ip_address(host)
+            return False
+        except ValueError:
+            pass
+        path_lower = urllib.parse.unquote(parsed.path or "").lower()
+        return any(path_lower.endswith(ext) for ext in DIRECT_STREAM_EXTENSIONS)
+    except Exception:
+        return False
+
+
+def extract_all_direct_video_urls(text: str) -> List[str]:
+    """Extracts and deduplicates public HTTPS direct video/HLS URLs from message text."""
+    if not text:
+        return []
+    normalized = re.sub(r"[\u200b-\u200d\ufeff]+", "", text)
+    found: List[str] = []
+    seen = set()
+    for match in re.finditer(r"https://[^\s<>\"']+", normalized, re.I):
+        cleaned = match.group(0).strip().rstrip(").,;:!?'\"]}")
+        if cleaned not in seen and is_direct_video_url(cleaned):
+            seen.add(cleaned)
+            found.append(cleaned)
+    return found
+
+
 def extract_url(text: str) -> Optional[str]:
     """Finds and cleanly extracts the first verified TeraBox/DiskWala/shortener HTTP(S) URL from text."""
     urls = extract_all_urls(text)
