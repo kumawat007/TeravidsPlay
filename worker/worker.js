@@ -946,7 +946,7 @@ async function resolveTeraBoxStream(surlOrUrl, env = {}, ctx = null, bypassCache
   if (resolvedPayload) {
     if (typeof caches !== "undefined" && caches.default) {
       const cacheResp = new Response(JSON.stringify(resolvedPayload), {
-        headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
+        headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=180" },
       });
       if (ctx && typeof ctx.waitUntil === "function") {
         ctx.waitUntil(caches.default.put(cacheKeyUrl, cacheResp));
@@ -1173,8 +1173,15 @@ async function serveProxiedMedia(request, workerOrigin, targetUrl) {
     }
   }
 
+  const isCacheableStaticHost = /(^|\.)(catbox\.moe|archive\.org|r2\.dev|b-cdn\.net)$/i.test(
+    (() => { try { return new URL(finalUrl).hostname; } catch (e) { return ""; } })()
+  );
+
   if (isThumbOrImage) {
     responseHeaders.set("Cache-Control", "public, max-age=3600");
+  } else if (isCacheableStaticHost || isSegment) {
+    responseHeaders.set("Accept-Ranges", "bytes");
+    responseHeaders.set("Cache-Control", "public, max-age=300");
   } else {
     responseHeaders.set("Accept-Ranges", "bytes");
     responseHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");

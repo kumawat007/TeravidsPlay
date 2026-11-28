@@ -116,10 +116,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // 2. DOM Elements
   const homePage = document.getElementById('homePage');
   const playerView = document.getElementById('playerView');
-  const ageGateDialog = document.getElementById('ageGateDialog');
   const homeJoinChannelBtn = document.getElementById('homeJoinChannelBtn');
   const homeMiniAppBtn = document.getElementById('homeMiniAppBtn');
-  const openAgeAdvisoryBtn = document.getElementById('openAgeAdvisoryBtn');
+  const pasteStreamForm = document.getElementById('pasteStreamForm');
+  const videoLinkInput = document.getElementById('videoLinkInput');
+  const pasteLinkError = document.getElementById('pasteLinkError');
 
   const playerContainer = document.getElementById('playerContainer');
   const videoElement = document.getElementById('player');
@@ -513,7 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function capturePosterFrameFromCandidates(candidates) {
-    if (hasRenderedVideoFrame || hasActivePosterImage || !Array.isArray(candidates)) return;
+    if (hasRenderedVideoFrame || hasActivePosterImage || !Array.isArray(candidates) || (isChannelUnlocked && candidateIdx >= 0)) return;
     const capCand = candidates.find((c) => c && c.url && c.isCors && !c.isHls);
     if (!capCand) return;
 
@@ -765,7 +766,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!isInitialAutoCheck) {
         try { tg?.HapticFeedback?.notificationOccurred?.('error'); } catch (e) {}
-        setGateStatusMessage('⚠️ You have not joined @teravidsplayer yet. Tap Step 1 to Join first, then tap Verify!');
+        if (data && data.transient) {
+          setGateStatusMessage('⏳ Telegram verification server busy — tap Verify again in a moment.');
+        } else {
+          setGateStatusMessage('⚠️ You have not joined @teravidsplayer yet. Tap Step 1 to Join first, then tap Verify!');
+        }
       } else if (data && data.reason === 'verifier_unavailable') {
         setGateStatusMessage('⏳ Verification server warming up — tap Verify in a moment.');
       } else {
@@ -814,84 +819,99 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
   }
 
-  // Homepage 18+ VIP Lounge + Native <dialog> Confirmation Handlers
-  const AGE_CONFIRM_KEY = 'teravids_age_confirmed_18';
-  let pendingAgeAction = null;
-
-  function isAgeConfirmed() {
-    try {
-      return localStorage.getItem(AGE_CONFIRM_KEY) === 'true';
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function openExternalOrTgUrl(targetUrl) {
+  // Homepage Channel Growth CTA & Accessible Link-Paste Form Handlers
+  function openExternalOrTgUrl(targetUrl, event = null) {
     if (tg && typeof tg.openTelegramLink === 'function' && targetUrl.startsWith('https://t.me/')) {
+      if (event) event.preventDefault();
       tg.openTelegramLink(targetUrl);
       return;
     }
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
-  }
-
-  function handleVipHomeAction(targetUrl) {
-    if (isAgeConfirmed()) {
-      openExternalOrTgUrl(targetUrl);
-      return;
-    }
-    pendingAgeAction = targetUrl;
-    if (ageGateDialog && typeof ageGateDialog.showModal === 'function') {
-      ageGateDialog.showModal();
-    } else {
-      openExternalOrTgUrl(targetUrl);
+    if (!event) {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
     }
   }
 
   if (homeJoinChannelBtn) {
-    homeJoinChannelBtn.addEventListener('click', () => handleVipHomeAction(TARGET_CHANNEL_URL));
+    homeJoinChannelBtn.addEventListener('click', (e) => openExternalOrTgUrl(TARGET_CHANNEL_URL, e));
   }
   if (homeMiniAppBtn) {
     const homeMiniUrl = (MINI_APP_NAME && MINI_APP_NAME.toLowerCase() !== 'main')
       ? `https://t.me/${BOT_USERNAME}/${MINI_APP_NAME}?startapp=open`
       : `https://t.me/${BOT_USERNAME}?startapp=open`;
-    homeMiniAppBtn.addEventListener('click', () => handleVipHomeAction(homeMiniUrl));
-  }
-  if (openAgeAdvisoryBtn && ageGateDialog && typeof ageGateDialog.showModal === 'function') {
-    openAgeAdvisoryBtn.addEventListener('click', () => {
-      pendingAgeAction = null;
-      ageGateDialog.showModal();
-    });
+    homeMiniAppBtn.href = homeMiniUrl;
+    homeMiniAppBtn.addEventListener('click', (e) => openExternalOrTgUrl(homeMiniUrl, e));
   }
 
-  if (ageGateDialog) {
-    ageGateDialog.addEventListener('close', () => {
-      const rv = ageGateDialog.returnValue;
-      ageGateDialog.returnValue = '';
-      if (rv === 'confirm') {
-        try { localStorage.setItem(AGE_CONFIRM_KEY, 'true'); } catch (e) {}
-        if (pendingAgeAction) {
-          const urlToOpen = pendingAgeAction;
-          pendingAgeAction = null;
-          openExternalOrTgUrl(urlToOpen);
-        }
-      } else {
-        pendingAgeAction = null;
-      }
-    });
-
-    if (!('closedBy' in HTMLDialogElement.prototype)) {
-      const outside = (e) => {
-        const r = ageGateDialog.getBoundingClientRect();
-        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-      };
-      let pressedOutside = false;
-      ageGateDialog.addEventListener('pointerdown', (e) => {
-        pressedOutside = outside(e);
-      });
-      ageGateDialog.addEventListener('pointerup', (e) => {
-        if (pressedOutside && outside(e)) ageGateDialog.close();
-      });
+  function normalizeUserPastedLink(rawInput) {
+    let val = String(rawInput || '').trim();
+    if (!val) return { error: 'Please paste a cloud video URL (e.g., https://terabox.com/s/... or https://files.catbox.moe/...).' };
+    if (/^[a-zA-Z0-9_-]{12,50}$/.test(val)) {
+      return { playerUrl: `${window.location.origin}/?v=${encodeURIComponent(val)}` };
     }
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(val) && /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\//.test(val)) {
+      val = `https://${val}`;
+    }
+    if (!isSafeHttpUrl(val)) {
+      return { error: 'Enter a valid http:// or https:// video link.' };
+    }
+    try {
+      const parsed = new URL(val);
+      const token = normalizeSurlToken(val);
+      const isDirectFile = /\.(mp4|m3u8|webm|mov|m4v|mkv)(\?|$)/i.test(parsed.pathname);
+      if (isDirectFile && !parsed.hostname.includes('terabox') && !parsed.hostname.includes('diskwala')) {
+        return { playerUrl: `${window.location.origin}/?stream=${encodeURIComponent(val)}` };
+      }
+      if (token) {
+        const params = new URLSearchParams({ v: token });
+        const dirVal = parsed.searchParams.get('path') || parsed.searchParams.get('dir') || '';
+        if (dirVal) params.set('path', dirVal);
+        return { playerUrl: `${window.location.origin}/?${params.toString()}` };
+      }
+      return { playerUrl: `${window.location.origin}/?url=${encodeURIComponent(val)}` };
+    } catch (e) {
+      return { error: 'Enter a valid cloud video link.' };
+    }
+  }
+
+  function setPasteFormError(msg) {
+    if (!videoLinkInput || !pasteLinkError) return;
+    if (msg) {
+      videoLinkInput.setAttribute('aria-invalid', 'true');
+      videoLinkInput.setCustomValidity(msg);
+      pasteLinkError.textContent = msg;
+      pasteLinkError.hidden = false;
+    } else {
+      videoLinkInput.removeAttribute('aria-invalid');
+      videoLinkInput.setCustomValidity('');
+      pasteLinkError.textContent = '';
+      pasteLinkError.hidden = true;
+    }
+  }
+
+  if (pasteStreamForm && videoLinkInput) {
+    let wasEdited = false;
+    videoLinkInput.addEventListener('input', () => {
+      wasEdited = true;
+      setPasteFormError('');
+    });
+    videoLinkInput.addEventListener('blur', () => {
+      if (!wasEdited || !videoLinkInput.value.trim()) return;
+      const check = normalizeUserPastedLink(videoLinkInput.value);
+      if (check.error) setPasteFormError(check.error);
+    });
+    pasteStreamForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const res = normalizeUserPastedLink(videoLinkInput.value);
+      if (res.error) {
+        setPasteFormError(res.error);
+        videoLinkInput.focus();
+        return;
+      }
+      setPasteFormError('');
+      const submitBtn = document.getElementById('pasteStreamBtn');
+      if (submitBtn) submitBtn.disabled = true;
+      window.location.assign(res.playerUrl);
+    });
   }
 
   checkChannelGate();
@@ -904,7 +924,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function activateHomeView() {
     if (homePage) homePage.style.display = 'flex';
     if (playerView) playerView.style.display = 'none';
-    document.title = 'TeravidsPlay — 18+ VIP Telegram Mini App Cinema';
+    document.title = 'TeravidsPlay — Instant Cloud Video Player & Telegram Mini App';
     if (videoElement && !videoElement.paused) videoElement.pause();
     requestAnimationFrame(() => setTimeout(dismissAppSplash, 180));
   }
@@ -1951,6 +1971,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (durationTimeElem) durationTimeElem.textContent = '00:00';
   }
 
+  const DIRECT_FIRST_CDN_HOSTS = [
+    'catbox.moe',
+    'files.catbox.moe',
+    'litter.catbox.moe',
+    'archive.org',
+    'r2.dev',
+    'b-cdn.net',
+    'replit.dev',
+    'replit.app',
+    'qzz.io',
+    'cdniteraplay.qzz.io',
+  ];
+
+  function isDirectFirstCdnUrl(rawUrl) {
+    try {
+      const host = new URL(rawUrl).hostname.toLowerCase();
+      return DIRECT_FIRST_CDN_HOSTS.some((d) => host === d || host.endsWith('.' + d));
+    } catch (e) {
+      return false;
+    }
+  }
+
   function buildCandidatesForSingleUrl(rawUrl) {
     if (!isSafeHttpUrl(rawUrl)) return [];
     const list = [];
@@ -1968,14 +2010,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return list;
     }
 
-    if (shouldProxyUrl(rawUrl)) {
-      list.push({ url: proxied, isHls, isCors: true, raw: rawUrl });
-      list.push({ url: rawUrl, isHls, isCors: false, raw: rawUrl });
-    } else {
+    // Prefer direct origin CDN (zero Worker hop bottleneck) for public/CORS CDNs; use Worker fallback automatically on error/stall
+    if (isDirectFirstCdnUrl(rawUrl) || !shouldProxyUrl(rawUrl)) {
       list.push({ url: rawUrl, isHls, isCors: sameOriginOrWorker, raw: rawUrl });
       if (rawUrl.startsWith('http') && !sameOriginOrWorker) {
         list.push({ url: proxied, isHls, isCors: true, raw: rawUrl });
       }
+    } else {
+      list.push({ url: proxied, isHls, isCors: true, raw: rawUrl });
+      list.push({ url: rawUrl, isHls, isCors: false, raw: rawUrl });
     }
     return list;
   }
@@ -1989,7 +2032,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  let stallWatchdogTimer = null;
+  function clearStallWatchdog() {
+    if (stallWatchdogTimer) {
+      clearTimeout(stallWatchdogTimer);
+      stallWatchdogTimer = null;
+    }
+  }
+
   function advancePlaybackCandidate() {
+    clearStallWatchdog();
     candidateIdx++;
     if (candidateIdx >= playbackQueue.length) {
       showError('Playback Interrupted', 'Unable to decode video stream right now. Tap Try Again or check @teravidsplayer.');
@@ -2021,21 +2073,19 @@ document.addEventListener('DOMContentLoaded', () => {
     desiredResumeTime = resumeAt;
     suppressAutoResume = resumeAt > 0;
     desiredAutoPlay = shouldPlay;
-
-    if (!hasActivePosterImage && !hasRenderedVideoFrame) {
-      videoElement.preload = 'auto';
-      capturePosterFrameFromCandidates(playbackQueue);
-    }
+    stopPosterFrameCapture();
+    videoElement.preload = 'auto';
 
     advancePlaybackCandidate();
   }
 
   function loadCandidate(cand) {
+    clearStallWatchdog();
     const gen = ++activeLoadGen;
     const { url, isHls, isCors } = cand;
     loader.classList.remove('hidden');
     loaderText.textContent = url.startsWith(WORKER_BASE)
-      ? 'Streaming via edge accelerator...'
+      ? 'Streaming via edge fallback...'
       : 'Connecting high-speed stream...';
     errorOverlay.style.display = 'none';
 
@@ -2061,9 +2111,14 @@ document.addEventListener('DOMContentLoaded', () => {
       hlsInstance = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        maxBufferLength: 60,
-        maxMaxBufferLength: 120,
-        maxBufferSize: 60 * 1000 * 1000,
+        capLevelToPlayerSize: true,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 90,
+        maxBufferSize: 50 * 1000 * 1000,
+        abrBandWidthFactor: 0.7,
+        abrBandWidthUpFactor: 0.55,
+        manifestLoadingTimeOut: 12000,
+        fragLoadingTimeOut: 15000,
         startLevel: -1,
       });
       hlsInstance.loadSource(url);
@@ -2095,7 +2150,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       hlsInstance.on(Hls.Events.ERROR, (event, data) => {
         if (gen !== activeLoadGen || !data.fatal) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries < 1 && !data.details?.includes('manifestLoad')) {
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries < 2 && !data.details?.includes('manifestLoad')) {
           netRetries++;
           hlsInstance.startLoad();
           return;
@@ -2144,17 +2199,38 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   videoElement.addEventListener('canplay', () => {
+    clearStallWatchdog();
     loader.classList.add('hidden');
   });
 
   videoElement.addEventListener('playing', () => {
+    clearStallWatchdog();
     loader.classList.add('hidden');
     hideVideoPoster();
   });
 
+  videoElement.addEventListener('pause', clearStallWatchdog);
+  videoElement.addEventListener('ended', clearStallWatchdog);
+
   videoElement.addEventListener('waiting', () => {
     loaderText.textContent = 'Buffering stream...';
     loader.classList.remove('hidden');
+    clearStallWatchdog();
+    if (isChannelUnlocked && !videoElement.paused && candidateIdx + 1 < playbackQueue.length) {
+      const watchGen = activeLoadGen;
+      stallWatchdogTimer = setTimeout(() => {
+        if (
+          watchGen === activeLoadGen &&
+          !videoElement.paused &&
+          videoElement.readyState < 3 &&
+          candidateIdx + 1 < playbackQueue.length
+        ) {
+          desiredResumeTime = videoElement.currentTime || 0;
+          showToast('⚡ Switching to faster route...');
+          advancePlaybackCandidate();
+        }
+      }, 8000);
+    }
   });
 
   videoElement.addEventListener('error', (e) => {
@@ -2387,7 +2463,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ...extractStreamMapEntries(vid.fast_stream_url),
       ...extractStreamMapEntries(vid.hls_url),
     ];
-    const priorityOrder = ['1080p', '720p', '480p', '360p', 'Auto'];
+    const priorityOrder = ['Auto', '720p', '480p', '360p', '1080p'];
     hlsEntries.sort((a, b) => {
       const ia = priorityOrder.indexOf(a.label);
       const ib = priorityOrder.indexOf(b.label);

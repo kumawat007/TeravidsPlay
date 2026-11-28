@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  /* 18+ Midnight Velvet VIP & Telegram Cinema Palette */
+  /* TeravidsPlay Cloud Cinema & Telegram Mini App Palette */
   --cinema-bg: #06090e;
   --cinema-nav: #0b0f19;
   --cinema-surface: #111827;
@@ -10,9 +10,9 @@
   --cinema-text-muted: #94a3b8;
   --yt-red: #ff0000;
   --yt-red-glow: rgba(255, 0, 0, 0.45);
-  --vip-crimson: #e11d48;
-  --vip-crimson-gradient: linear-gradient(135deg, #be123c 0%, #e11d48 100%);
-  --vip-crimson-glow: rgba(225, 29, 72, 0.35);
+  --accent-indigo: #4f46e5;
+  --accent-indigo-gradient: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  --accent-indigo-glow: rgba(56, 189, 248, 0.3);
   --tg-blue: #0088cc;
   --tg-gradient: linear-gradient(135deg, #0088cc 0%, #00b4d8 100%);
   --gold-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
@@ -56,7 +56,7 @@ body {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: radial-gradient(circle at 50% 35%, rgba(225, 29, 72, 0.2) 0%, #06090e 65%);
+  background: radial-gradient(circle at 50% 35%, rgba(0, 136, 204, 0.22) 0%, #06090e 65%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -79,12 +79,12 @@ body {
 .app-splash-logo {
   width: 84px;
   height: 84px;
-  filter: drop-shadow(0 0 24px rgba(225, 29, 72, 0.45));
+  filter: drop-shadow(0 0 24px rgba(56, 189, 248, 0.4));
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .app-splash-logo {
-    animation: vipPulse 1.6s ease-in-out infinite;
+    animation: cloudPulse 1.6s ease-in-out infinite;
   }
 }
 
@@ -101,7 +101,7 @@ progress.splash-progress {
   border-radius: 999px;
   border: none;
   overflow: hidden;
-  accent-color: #e11d48;
+  accent-color: #38bdf8;
   background: rgba(255, 255, 255, 0.14);
 }
 
@@ -111,12 +111,12 @@ progress.splash-progress::-webkit-progress-bar {
 }
 
 progress.splash-progress::-webkit-progress-value {
-  background: var(--vip-crimson-gradient);
+  background: var(--tg-gradient);
   border-radius: 999px;
 }
 
 progress.splash-progress::-moz-progress-bar {
-  background: var(--vip-crimson-gradient);
+  background: var(--tg-gradient);
   border-radius: 999px;
 }
 
@@ -186,9 +186,9 @@ progress.splash-progress::-moz-progress-bar {
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.4px;
-  color: #fecdd3;
-  background: rgba(225, 29, 72, 0.24);
-  border: 1px solid rgba(251, 113, 133, 0.45);
+  color: #bae6fd;
+  background: rgba(0, 136, 204, 0.24);
+  border: 1px solid rgba(56, 189, 248, 0.45);
   padding: 2px 8px;
   border-radius: 999px;
 }
@@ -231,28 +231,28 @@ progress.splash-progress::-moz-progress-bar {
 }
 
 /* ==========================================================================
-   2. HOME PAGE VIEW (18+ VIP Velvet Lounge — Zero Videos, Mini App Funnel)
+   2. HOME PAGE VIEW (Telegram Channel Growth #1 + Link Streamer)
    ========================================================================== */
 .home-container {
   min-height: calc(100vh - 54px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 28px 18px;
+  padding: 28px 18px max(28px, env(safe-area-inset-bottom, 0px));
   background:
-    radial-gradient(circle at 22% 20%, rgba(225, 29, 72, 0.16) 0%, transparent 50%),
-    radial-gradient(circle at 80% 75%, rgba(0, 136, 204, 0.14) 0%, transparent 55%);
+    radial-gradient(circle at 22% 20%, rgba(0, 136, 204, 0.16) 0%, transparent 50%),
+    radial-gradient(circle at 80% 75%, rgba(79, 70, 229, 0.16) 0%, transparent 55%);
 }
 
 .home-card {
-  background: linear-gradient(160deg, rgba(17, 24, 39, 0.96) 0%, rgba(11, 10, 20, 0.98) 100%);
-  border: 1px solid rgba(251, 113, 133, 0.25);
+  background: linear-gradient(160deg, rgba(17, 24, 39, 0.96) 0%, rgba(10, 15, 28, 0.98) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.26);
   border-radius: 24px;
-  padding: 36px 28px;
-  max-width: 640px;
+  padding: 34px 28px;
+  max-width: 680px;
   width: 100%;
   text-align: center;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(225, 29, 72, 0.08);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 136, 204, 0.08);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -261,7 +261,7 @@ progress.splash-progress::-moz-progress-bar {
   }
 
   .vip-emblem {
-    animation: vipPulse 2.8s ease-in-out infinite;
+    animation: cloudPulse 2.8s ease-in-out infinite;
   }
 }
 
@@ -277,15 +277,15 @@ progress.splash-progress::-moz-progress-bar {
   }
 }
 
-@keyframes vipPulse {
+@keyframes cloudPulse {
   0%,
   100% {
-    box-shadow: 0 0 18px rgba(225, 29, 72, 0.45), inset 0 0 10px rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.4), inset 0 0 10px rgba(255, 255, 255, 0.15);
     transform: translateY(0);
   }
 
   50% {
-    box-shadow: 0 0 28px rgba(225, 29, 72, 0.7), inset 0 0 12px rgba(255, 255, 255, 0.22);
+    box-shadow: 0 0 28px rgba(56, 189, 248, 0.65), inset 0 0 12px rgba(255, 255, 255, 0.22);
     transform: translateY(-3px);
   }
 }
@@ -299,9 +299,9 @@ progress.splash-progress::-moz-progress-bar {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.6px;
-  color: #ffe4e6;
-  background: rgba(225, 29, 72, 0.22);
-  border: 1px solid rgba(251, 113, 133, 0.45);
+  color: #e0f2fe;
+  background: rgba(0, 136, 204, 0.22);
+  border: 1px solid rgba(56, 189, 248, 0.45);
   border-radius: 999px;
 }
 
@@ -316,11 +316,8 @@ progress.splash-progress::-moz-progress-bar {
   width: 68px;
   height: 68px;
   border-radius: 20px;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
   color: #ffffff;
-  background: var(--vip-crimson-gradient);
+  background: var(--tg-gradient);
   border: 1.5px solid rgba(255, 255, 255, 0.35);
 }
 
@@ -330,6 +327,7 @@ progress.splash-progress::-moz-progress-bar {
   color: #ffffff;
   letter-spacing: -0.5px;
   margin-bottom: 12px;
+  text-wrap: balance;
 }
 
 .home-cute-msg {
@@ -337,6 +335,7 @@ progress.splash-progress::-moz-progress-bar {
   color: #cbd5e1;
   line-height: 1.6;
   margin-bottom: 22px;
+  text-wrap: pretty;
 }
 
 .vip-steps-grid {
@@ -413,22 +412,117 @@ progress.splash-progress::-moz-progress-bar {
   filter: brightness(1.1);
 }
 
-.btn-vip-crimson {
-  background: var(--vip-crimson-gradient);
+.btn-channel-primary {
+  background: var(--tg-gradient);
   color: #ffffff;
-  box-shadow: 0 4px 18px var(--vip-crimson-glow);
+  box-shadow: 0 4px 18px rgba(0, 136, 204, 0.45);
 }
 
 .btn-tg {
-  background: var(--tg-gradient);
+  background: var(--accent-indigo-gradient);
   color: #ffffff;
-  box-shadow: 0 4px 16px rgba(0, 136, 204, 0.4);
+  box-shadow: 0 4px 16px var(--accent-indigo-glow);
 }
 
 .btn-cf {
   background: var(--gold-gradient);
   color: #ffffff;
   box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
+}
+
+.btn-stream-submit {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  min-height: 48px;
+  padding: 12px 20px;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
+  flex-shrink: 0;
+}
+
+.paste-form-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 22px;
+  text-align: left;
+}
+
+.paste-section-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.paste-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paste-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.paste-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+@media (max-width: 560px) {
+  .paste-input-row {
+    flex-direction: column;
+  }
+}
+
+.paste-url-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: max(1rem, 1em);
+  line-height: 1.4;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(148, 163, 184, 0.35);
+  background: rgba(6, 9, 14, 0.85);
+  color: #ffffff;
+}
+
+.paste-url-input::placeholder {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.paste-url-input:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+  border-color: #38bdf8;
+}
+
+.paste-url-input:user-invalid,
+.paste-url-input[aria-invalid="true"] {
+  border-color: #f87171;
+}
+
+.paste-help-text {
+  font-size: 12px;
+  color: var(--cinema-text-muted);
+  line-height: 1.45;
+}
+
+.paste-error-msg {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  padding: 8px 12px;
+  border-radius: 10px;
 }
 
 .home-chips-row {
@@ -469,95 +563,6 @@ progress.splash-progress::-moz-progress-bar {
 
 .home-footer-meta a:hover {
   text-decoration: underline;
-}
-
-.footer-link-btn {
-  background: transparent;
-  border: 1px solid rgba(251, 113, 133, 0.35);
-  color: #fecdd3;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 5px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  min-height: 32px;
-  transition: background 0.15s ease;
-}
-
-.footer-link-btn:hover {
-  background: rgba(225, 29, 72, 0.2);
-}
-
-/* Native 18+ Age Confirmation Dialog (Top Layer) */
-#ageGateDialog {
-  margin: auto;
-  max-width: 440px;
-  width: calc(100vw - 32px);
-  padding: 0;
-  border: 1px solid rgba(251, 113, 133, 0.4);
-  border-radius: 22px;
-  background: #0f172a;
-  color: var(--cinema-text);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9);
-}
-
-#ageGateDialog:modal {
-  overscroll-behavior: contain;
-}
-
-#ageGateDialog::backdrop {
-  background: rgba(3, 4, 9, 0.84);
-  backdrop-filter: blur(8px);
-  overflow: hidden;
-  overscroll-behavior: contain;
-}
-
-.age-dialog-box {
-  padding: 26px 22px;
-  text-align: center;
-}
-
-.age-dialog-badge {
-  display: inline-block;
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 800;
-  color: #ffe4e6;
-  background: rgba(225, 29, 72, 0.25);
-  border: 1px solid rgba(251, 113, 133, 0.5);
-  margin-bottom: 14px;
-}
-
-.age-dialog-title {
-  font-size: 19px;
-  font-weight: 800;
-  color: #ffffff;
-  margin-bottom: 10px;
-}
-
-.age-dialog-desc {
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: #cbd5e1;
-  margin-bottom: 20px;
-}
-
-.age-dialog-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-
-.age-dialog-actions .btn {
-  min-height: 44px;
-  padding: 10px 16px;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 700;
-  font-family: inherit;
 }
 
 /* ==========================================================================
@@ -1315,7 +1320,7 @@ progress.splash-progress::-moz-progress-bar {
 
 .channel-gate-card {
   background: rgba(15, 23, 42, 0.95);
-  border: 1px solid rgba(251, 113, 133, 0.28);
+  border: 1px solid rgba(56, 189, 248, 0.28);
   border-radius: 20px;
   padding: 22px 20px;
   text-align: center;
@@ -1333,9 +1338,9 @@ progress.splash-progress::-moz-progress-bar {
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.5px;
-  color: #fecdd3;
-  background: rgba(225, 29, 72, 0.22);
-  border: 1px solid rgba(251, 113, 133, 0.4);
+  color: #bae6fd;
+  background: rgba(0, 136, 204, 0.22);
+  border: 1px solid rgba(56, 189, 248, 0.4);
   padding: 3px 10px;
   border-radius: 999px;
   margin-bottom: 10px;
@@ -1343,7 +1348,7 @@ progress.splash-progress::-moz-progress-bar {
 
 .gate-lock-icon {
   margin-bottom: 10px;
-  filter: drop-shadow(0 0 14px rgba(225, 29, 72, 0.45));
+  filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.4));
 }
 
 .gate-title {
@@ -1374,8 +1379,9 @@ progress.splash-progress::-moz-progress-bar {
 @media (forced-colors: active) {
   .home-card,
   .vip-step-item,
+  .paste-form-box,
+  .paste-url-input,
   .channel-gate-card,
-  #ageGateDialog,
   .gate-btn,
   .home-action-btn {
     border: 2px solid ButtonText;

@@ -4,26 +4,25 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
-  <title>TeravidsPlay — 18+ VIP Telegram Mini App Cinema</title>
+  <title>TeravidsPlay — Instant Cloud Video Player &amp; Telegram Mini App</title>
 
   <!-- SEO & OpenGraph -->
-  <meta name="description" content="Private 18+ VIP cinema streaming inside Telegram Mini App for @teravidsplayer members — 1080p Full HD, zero ads, 4X turbo speed & 300% sound boost." />
-  <meta property="og:title" content="TeravidsPlay — 18+ VIP Telegram Mini App Player" />
-  <meta property="og:description" content="Exclusive ad-free 1080p cloud cinema inside Telegram Mini App for @teravidsplayer." />
+  <meta name="description" content="Ad-free Full HD cloud video link player inside Telegram Mini App for @teravidsplayer — paste TeraBox, Catbox, MP4 & HLS links with zero ads, 4X speed & 300% sound boost." />
+  <meta property="og:title" content="TeravidsPlay — Instant Cloud Video Player & Telegram Mini App" />
+  <meta property="og:description" content="Fast ad-free cloud cinema streaming inside Telegram Mini App for @teravidsplayer." />
 
   <!-- 512x512 Monochrome Cinema SVG Favicon & Mini App Splash -->
   <link rel="icon" type="image/svg+xml" href="splash-512.svg" />
 
-  <!-- Telegram WebApp SDK (unversioned dynamic SDK; constrained via CSP) -->
-  <script src="https://telegram.org/js/telegram-web-app.js" referrerpolicy="no-referrer"></script>
-
-  <!-- HLS.js for Adaptive Streams (SRI Verified) -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js" integrity="sha384-oJR5PTkR0gvqJ/UnX1IkFQgxg6BByX7jPWmgSSY5dz0+Yc7O3mloo717zZpF/xpb" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-
-  <!-- Google Fonts: Plus Jakarta Sans & Inter -->
+  <!-- Early TLS Preconnect to Streaming Engine & Fonts -->
+  <link rel="preconnect" href="https://teravidsplay.proxyking.workers.dev" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Telegram WebApp SDK + HLS.js (Deferred to keep HTML parsing non-blocking) -->
+  <script defer src="https://telegram.org/js/telegram-web-app.js" referrerpolicy="no-referrer"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js" integrity="sha384-oJR5PTkR0gvqJ/UnX1IkFQgxg6BByX7jPWmgSSY5dz0+Yc7O3mloo717zZpF/xpb" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -47,7 +46,7 @@
           </svg>
         </div>
         <span class="nav-brand-title">TeravidsPlay</span>
-        <span class="nav-vip-badge"><span aria-hidden="true">🔞</span> 18+ VIP</span>
+        <span class="nav-vip-badge"><span aria-hidden="true">⚡</span> HD MINI APP</span>
       </a>
     </div>
 
@@ -68,24 +67,26 @@
 
   <main id="mainContent">
     <!-- ============================================================== -->
-    <!-- 1. 18+ VIP LOUNGE HOMEPAGE (Zero Videos — Mini App Funnel Only) -->
+    <!-- 1. CLOUD CINEMA HOMEPAGE (Telegram Growth #1 + Link Streamer)   -->
     <!-- ============================================================== -->
     <div id="homePage" class="home-container" style="display: none;">
       <div class="home-card vip-lounge-card">
         <div class="vip-top-pill">
-          <span aria-hidden="true">🔞</span>
-          <span>18+ ADULTS ONLY • PRIVATE VIP LOUNGE</span>
+          <span aria-hidden="true">📢</span>
+          <span>OFFICIAL TELEGRAM CHANNEL • @TERAVIDSPLAYER</span>
         </div>
 
         <div class="home-badge-icon" aria-hidden="true">
-          <span class="vip-emblem">18+</span>
+          <span class="vip-emblem">
+            <img src="splash-512.svg" width="38" height="38" alt="" />
+          </span>
         </div>
 
-        <h1 class="home-title">TeravidsPlay 18+ VIP Cinema</h1>
+        <h1 class="home-title">TeravidsPlay Cloud Cinema</h1>
 
         <p class="home-cute-msg">
-          Private, ad-free <b>Full HD 1080p</b> streaming lounge exclusively for verified members of <b>@teravidsplayer</b>.
-          Stream inside our secure <b>Telegram Mini App</b> with zero downloads, zero popups, <b>300% sound boost</b>, and <b>4X turbo speed</b>.
+          Join <b>@teravidsplayer</b> first to unlock instant, ad-free <b>Full HD streaming</b> inside our <b>Telegram Mini App</b>.
+          Zero downloads, adaptive anti-buffer playback, <b>300% sound boost</b>, and <b>4X turbo speed</b>.
         </p>
 
         <ol class="vip-steps-grid" aria-label="How to watch inside Telegram Mini App">
@@ -93,37 +94,37 @@
             <span class="vip-step-num" aria-hidden="true">📢</span>
             <div>
               <strong>1. Join @teravidsplayer</strong>
-              <span>Unlock verified channel access</span>
+              <span>Primary channel access</span>
+            </div>
+          </li>
+          <li class="vip-step-item">
+            <span class="vip-step-num" aria-hidden="true">🔗</span>
+            <div>
+              <strong>2. Paste Any Link</strong>
+              <span>TeraBox, Catbox, MP4 &amp; HLS</span>
             </div>
           </li>
           <li class="vip-step-item">
             <span class="vip-step-num" aria-hidden="true">📱</span>
             <div>
-              <strong>2. Open Mini App</strong>
-              <span>1-Tap launch inside Telegram</span>
-            </div>
-          </li>
-          <li class="vip-step-item">
-            <span class="vip-step-num" aria-hidden="true">🍿</span>
-            <div>
-              <strong>3. Stream Ad-Free</strong>
-              <span>1080p HD • Stream-Only Privacy</span>
+              <strong>3. Stream in Mini App</strong>
+              <span>Ad-free HD • Stream-Only</span>
             </div>
           </li>
         </ol>
 
         <div class="home-actions-row">
-          <button type="button" id="homeJoinChannelBtn" class="home-action-btn btn-vip-crimson">
-            <span aria-hidden="true">🔞</span>
-            <span>Join 18+ VIP Channel (@teravidsplayer)</span>
-          </button>
-
-          <button type="button" id="homeMiniAppBtn" class="home-action-btn btn-tg">
+          <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer" id="homeJoinChannelBtn" class="home-action-btn btn-channel-primary">
             <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>
             </svg>
-            <span>Launch Telegram Mini App</span>
-          </button>
+            <span>1. Join Channel (@teravidsplayer)</span>
+          </a>
+
+          <a href="https://t.me/Teravidsplayerbot?startapp=open" target="_blank" rel="noopener noreferrer" id="homeMiniAppBtn" class="home-action-btn btn-tg">
+            <span aria-hidden="true">📱</span>
+            <span>2. Open Telegram Mini App</span>
+          </a>
 
           <a href="https://buymeacoffee.com/kumawat007" target="_blank" rel="noopener noreferrer" class="home-action-btn btn-cf">
             <span aria-hidden="true">☕</span>
@@ -131,9 +132,39 @@
           </a>
         </div>
 
+        <form id="pasteStreamForm" class="paste-form-box" action="/" method="GET" aria-labelledby="pasteFormHeading" novalidate>
+          <h2 id="pasteFormHeading" class="paste-section-title">Stream Your Video Link Inside Mini App</h2>
+          <div class="paste-field">
+            <label for="videoLinkInput" class="paste-label">Paste Cloud Video URL (Required)</label>
+            <div class="paste-input-row">
+              <input
+                type="url"
+                id="videoLinkInput"
+                name="url"
+                class="paste-url-input"
+                placeholder="https://terabox.com/s/... or https://files.catbox.moe/..."
+                inputmode="url"
+                enterkeyhint="go"
+                autocomplete="url"
+                autocorrect="off"
+                autocapitalize="none"
+                spellcheck="false"
+                required
+                aria-describedby="videoLinkHelp pasteLinkError"
+              />
+              <button type="submit" id="pasteStreamBtn" class="home-action-btn btn-stream-submit">
+                <span aria-hidden="true">▶</span>
+                <span>Stream Link</span>
+              </button>
+            </div>
+            <p id="videoLinkHelp" class="paste-help-text">Supports TeraBox, Catbox.moe, Direct MP4 &amp; HLS (.m3u8) links. Requires <b>@teravidsplayer</b> membership to unlock playback.</p>
+            <p id="pasteLinkError" class="paste-error-msg" role="status" aria-live="polite" hidden></p>
+          </div>
+        </form>
+
         <div class="home-chips-row">
-          <span class="home-chip">🔞 18+ Verified Only</span>
-          <span class="home-chip">⚡ Zero Ads &amp; Popups</span>
+          <span class="home-chip">⚡ Adaptive Anti-Buffer</span>
+          <span class="home-chip">🚫 Zero Ads &amp; Popups</span>
           <span class="home-chip">🔒 Stream-Only Privacy</span>
           <span class="home-chip">🔊 300% Sound Boost</span>
           <span class="home-chip">⏩ 4X Turbo Speed</span>
@@ -141,26 +172,9 @@
 
         <div class="home-footer-meta">
           <span>📢 Official Channel: <a href="https://t.me/teravidsplayer" target="_blank" rel="noopener noreferrer">@teravidsplayer</a></span>
-          <button type="button" id="openAgeAdvisoryBtn" class="footer-link-btn">🔞 18+ Advisory &amp; Safety</button>
         </div>
       </div>
     </div>
-
-    <!-- Native Modal Dialog for 18+ Age Confirmation -->
-    <dialog id="ageGateDialog" closedby="any" aria-labelledby="ageDialogTitle">
-      <div class="age-dialog-box">
-        <div class="age-dialog-badge" aria-hidden="true">🔞 18+</div>
-        <h1 id="ageDialogTitle" class="age-dialog-title">Adults-Only VIP Community (18+)</h1>
-        <p class="age-dialog-desc">
-          <b>TeravidsPlay</b> links private mature communities on <b>@teravidsplayer</b> with ad-free Telegram Mini App streaming.
-          By continuing, you confirm you are at least <b>18 years of age</b> and accept stream-only private playback.
-        </p>
-        <form method="dialog" class="age-dialog-actions">
-          <button type="submit" value="cancel" class="btn btn-secondary" autofocus>Cancel (Exit)</button>
-          <button type="submit" value="confirm" id="ageConfirmBtn" class="btn btn-vip-crimson">🔞 I am 18+ — Continue to Telegram</button>
-        </form>
-      </div>
-    </dialog>
 
     <!-- ============================================================== -->
     <!-- 2. CINEMA VIDEO PLAYER VIEW (Shown ONLY during playback)        -->
@@ -258,11 +272,11 @@
         <div id="channelGateOverlay" class="channel-gate-overlay" role="dialog" aria-modal="true" aria-labelledby="gateTitleHeading" style="display: none;">
           <div class="channel-gate-card">
             <div class="gate-vip-pill">
-              <span aria-hidden="true">🔞</span>
-              <span>18+ MEMBERS ONLY • @TERAVIDSPLAYER</span>
+              <span aria-hidden="true">🔒</span>
+              <span>CHANNEL MEMBERS ONLY • @TERAVIDSPLAYER</span>
             </div>
             <div class="gate-lock-icon" aria-hidden="true">
-              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#ff1e56" stroke-width="2">
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
@@ -563,6 +577,6 @@
     </div>
   </main>
 
-  <script src="app.js"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>
